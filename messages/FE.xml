@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Messages mongoSupport="false">
+
+
+    <Message name="RequestMessage">
+        <Attribute name="assetId" type="int"/>
+        <Attribute name="requestId" type="int"/>
+    </Message>
+
+    <Message name="ResponseMessage">
+        <Attribute name="statusOk" type="boolean"/>
+        <Attribute name="requestId" type="int"/>
+    </Message>
+
+    <Message name="UpdateMessage" extends="RequestMessage">
+        <Attribute name="value" type="int"/>
+        <Attribute name="initTime" type="long"/>
+    </Message>
+
+    <Message name="UpdateResponse" extends="ResponseMessage">
+        <Attribute name="statusText" type="String"/>
+    </Message>
+</Messages>

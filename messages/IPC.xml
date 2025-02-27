@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Messages mongoSupport="false">
+
+
+    <Message name="Heartbeat">
+        <Attribute name="nodeId" type="int"/>
+        <Attribute name="serverState" type="int"/>
+    </Message>
+
+</Messages>

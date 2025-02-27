@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.hoddmimes'
+version = 'X1.0'
+
+repositories {
+    mavenCentral()
+}
+
+
+task(generateMessages, type: JavaExec ) {
+    mainClass = 'com.hoddmimes.transform.MessageCompiler'
+    classpath = files('./libs/messageCompiler-1.5.jar')
+    args  '-xml', './messages/TxTestFileSet.xml'
+    doLast {
+        println "Generated Matcher Messages"
+    }
+}
+
+task deleteGeneratedFiles(type: Delete) {
+    delete fileTree('src/main/java/com/hoddmimes/txtest/generated/') {
+        include '**/*.java'
+    }
+    doLast {
+        println "Cleaned Generated Messages"
+    }
+}
+
+
+compileJava.dependsOn( [generateMessages] )
+clean.dependsOn(deleteGeneratedFiles)
+
+
+dependencies {
+    implementation fileTree(dir: './libs', include: 'messageCompiler-1.5.jar')
+    implementation group: 'commons-io', name: 'commons-io', version: '2.18.0'
+    implementation group: 'com.google.code.gson', name: 'gson', version: '2.12.1'
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.24.3'
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.24.3'
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

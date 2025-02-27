@@ -1,0 +1,34 @@
+{
+    "nodes" : [ { "node_id" : 1, "ip" : "127.0.0.1", "tcp_port" : 3001,  "udp_port" : 3001,  "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
+                { "node_id" : 2, "ip" : "127.0.0.1", "tcp_port" : 3002,  "udp_port" : 3002 , "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
+                { "node_id" : 3, "ip" : "127.0.0.1", "tcp_port" : 3003,  "udp_port" : 3003 } ],
+
+
+
+
+      "service" : {
+        "name": "test_tx",
+        "preferred_primary": {
+          "node_id": 1
+        },
+        "preferred_standby": {
+          "node_idid": 2
+        },
+
+        "tx_logging": {
+          "log_path": "./test_tx_#datetime#.log",
+          "max_file_size": 25000000,
+          "write_align_size": 512,
+          "write_buffer_size": 24576
+        }
+      },
+
+      "ipc_connections" : {
+        "hb_intervals_sec" : 1,
+        "max_missed_hb" : 10
+      },
+
+      "executor_threads" : 4,
+
+      "number_of_assets"  : 100
+}

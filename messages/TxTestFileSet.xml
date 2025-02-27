@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<MessageFiles>
+    <MessageFile language="java" file="./messages/FE.xml" outPath="src/main/java/com/hoddmimes/txtest/generated/fe/messages/" package="com.hoddmimes.txtest.generated.fe.messages" messageBase="100"/>
+    <MessageFile language="java" file="./messages/IPC.xml" outPath="src/main/java/com/hoddmimes/txtest/generated/ipc/messages/" package="com.hoddmimes.txtest.generated.ipc.messages" messageBase="200"/>
+    <!--
+    <MessageFactory outPath="src/main/java/com/hoddmimes/txtest/generated/messages/" package="com.hoddmimes.txtest.generated.messages"/>
+    <MessageFile file="./messages/FE.xml"  outPath="src/main/java/com/hoddmimes/txtest/generated/fe/messages/" package="com.hoddmimes.txtest.generated.fe.messages"/>
+    <MessageFile file="./messages/IPC.xml" outPath="src/main/java/com/hoddmimes/txtest/generated/ipc/messages/" package="com.hoddmimes.txtest.generated.ipc.messages"/>
+    -->
+</MessageFiles>

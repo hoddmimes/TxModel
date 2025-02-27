@@ -1,0 +1,20 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.hoddmimes'
+version = 'X1.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.lmax:disruptor:3.4.4'
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
