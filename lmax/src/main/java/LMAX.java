@@ -11,7 +11,7 @@ import java.util.concurrent.Executors;
 public class LMAX
 {
     private static int cLOOPS = 100000;
-    private static int cPRODUCERS = 5;
+    private static int cPRODUCERS = 6;
 
     long     mTotalSum;
     long     mEventCount;
