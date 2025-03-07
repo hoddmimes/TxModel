@@ -2,10 +2,33 @@
 
 <Messages mongoSupport="false">
 
-
     <Message name="Heartbeat">
         <Attribute name="nodeId" type="int"/>
         <Attribute name="serverState" type="int"/>
     </Message>
+
+    <!-- Message sent from a server node at startup to the quorum server to find out what its role should be -->
+    <Message name="QuorumVoteRequest">
+        <Attribute name="service" type="String"/>
+        <Attribute name="nodeId" type="int"/>
+        <Attribute name="requestedServerState" type="int"/>
+        <Attribute name="currentSeqno" type="long"/>
+    </Message>
+
+    <!-- Message sent from quorum server to a server node at startup to inform about what role it should have -->
+    <Message name="QuorumVoteResponse">
+        <Attribute name="nodeId" type="int"/>
+        <Attribute name="serverState" type="int"/>
+        <Attribute name="reason" type="String"/>
+    </Message>
+
+
+    <Message name="QuorumHeartbeat">
+        <Attribute name="service" type="String"/>
+        <Attribute name="nodeId" type="int"/>
+        <Attribute name="serverState" type="int"/>
+        <Attribute name="msgSeqno" type="long"/>
+    </Message>
+
 
 </Messages>

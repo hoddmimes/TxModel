@@ -15,6 +15,8 @@ import java.net.InetAddress;
 
 public class TxServer implements IpcConnectionCallbacks, FECallbackIf
 {
+    public enum ServerState { Unknown, Primary, Standby };
+
     private Logger mLogger = LogManager.getLogger(TxServer.class);
     private JsonObject mConfiguration;
     private String mConfigFilename = "./TxServer.json"; // Default configuration
@@ -41,7 +43,7 @@ public class TxServer implements IpcConnectionCallbacks, FECallbackIf
     }
 
     private void creatAndStartAssetController() {
-        mAssetController = new AssetController( mConfiguration.get( "number_of_assets" ).getAsInt() );
+        mAssetController = new AssetController( mConfiguration );
     }
 
     private void createAndStartFE() {

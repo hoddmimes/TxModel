@@ -1,6 +1,9 @@
 package com.hoddmimes.txtest.server;
 
+import com.google.gson.JsonObject;
 import com.hoddmimes.txtest.aux.TxCntx;
+import com.hoddmimes.txtest.aux.txlogger.TxLogger;
+import com.hoddmimes.txtest.aux.txlogger.TxlogWriter;
 import com.hoddmimes.txtest.generated.fe.messages.RequestMessage;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateResponse;
@@ -14,10 +17,18 @@ public class AssetController
 {
     private HashMap<Integer,Asset> mAssetMap;
     private Logger mLogger = LogManager.getLogger( AssetController.class);
+    private TxLogger txLogger;
+    private TxlogWriter txWriter;
 
-    public AssetController( int pNumberOfAssets) {
+    public AssetController(JsonObject jConfiguration ) {
+        int tNumberOfAssets = jConfiguration.get("number_of_assets").getAsInt();
+
+        JsonObject jTxLoggerConfig = jConfiguration.get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
+        txLogger = new TxLogger( jTxLoggerConfig );
+        txWriter = txLogger.getWriter();
+
         mAssetMap = new HashMap<>();
-        for (int i = 0; i < pNumberOfAssets; i++) {
+        for (int i = 0; i < tNumberOfAssets; i++) {
             Asset a = new Asset((i+1));
             mAssetMap.put( a.getAssetId(), a );
         }
@@ -47,6 +58,7 @@ public class AssetController
         }
         if (tRqstMsg instanceof UpdateMessage) {
             UpdateMessage updMsg = (UpdateMessage) tRqstMsg;
+            txWriter.queueMessage(updMsg.messageToBytes() );
             tAsset.update(updMsg.getValue());
             pTxCntx.addTimestamp("start to send response");
             pTxCntx.sendResponse(createUpdateResponse(tAssetId, tRqstMsg.getRequestId(), true, "Asset id (" + tAssetId + ") updated to: " + updMsg.getValue()));

@@ -15,7 +15,6 @@
 
     <Message name="UpdateMessage" extends="RequestMessage">
         <Attribute name="value" type="int"/>
-        <Attribute name="initTime" type="long"/>
     </Message>
 
     <Message name="UpdateResponse" extends="ResponseMessage">

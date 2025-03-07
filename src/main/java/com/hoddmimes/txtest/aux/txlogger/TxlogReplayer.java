@@ -132,10 +132,12 @@ public class TxlogReplayer {
 
         private TxlogReplayRecord readTxlRecord() throws IOException {
 
+            // Read message size
             int tMsgSize1 = mFile.readInt();
 
-            int tReplyOption = mFile.readInt();
-            if ((tReplyOption != TxLogger.REPLAY_OPTION_IGNORE) && (tReplyOption != TxLogger.REPLAY_OPTION_REPLAY)) {
+            // Read message logging sequence number. If 0 (zero) it is a filler record that should not be replayed
+            long tMsgSeqno = mFile.readLong();
+            if (tMsgSeqno < 0) {
                 throw new IOException("Invalid reply option found in file\"" + mFilename + " at position " + mPos);
             }
 
@@ -152,7 +154,7 @@ public class TxlogReplayer {
                 throw new IOException("END Markee not found in file\"" + mFilename + " at position " + mPos);
             }
 
-            return new TxlogReplayRecord( tMsgData, mFilename, tReplyOption);
+            return new TxlogReplayRecord( tMsgData, mFilename, tMsgSeqno);
         }
 
 
@@ -164,7 +166,7 @@ public class TxlogReplayer {
                 int tTotRecSize = getTotalRecordSize();
 
                 if (mDirection == TxlogReplayer.BACKWARD) {
-                    if (mPos <= 0) { // At the begining of the file, no more data avalable in this file
+                    if (mPos <= 0) { // At the beginning of the file, no more data available in this file
                         return null;
                     }
 

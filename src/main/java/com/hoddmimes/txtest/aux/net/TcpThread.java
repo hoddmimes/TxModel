@@ -156,7 +156,7 @@ public class TcpThread extends Thread
 		ByteBuffer tData = ByteBuffer.allocate( BUFFER_SIZE );
 		ByteBuffer tReadBuffer = null;
 		byte[] tBuffer;
-		int		tSize;
+		int		tSize, tReadSize;
 
 		
 		while ( !mClosed ) 
@@ -167,7 +167,10 @@ public class TcpThread extends Thread
 				 */
 				tHdr.clear();
 				while( tHdr.position() < HDR_SIZE ) {
-					mChannel.read( tHdr );
+					tReadSize = mChannel.read( tHdr );
+					if (tReadSize < 0) {
+						throw new IOException("tcp/ip read, channel closed");
+					}
 				}
 
 				tHdr.flip();
@@ -184,7 +187,10 @@ public class TcpThread extends Thread
 				tReadBuffer.clear();
 				tReadBuffer.limit( tSize );
 				while( tReadBuffer.position() < tSize ) {
-					mChannel.read(tReadBuffer);
+					tReadSize = mChannel.read(tReadBuffer);
+					if (tReadSize < 0) {
+						throw new IOException("tcp/ip read, channel closed");
+					}
 				}
 				tBuffer = new byte[ tSize ];
 				tReadBuffer.flip();

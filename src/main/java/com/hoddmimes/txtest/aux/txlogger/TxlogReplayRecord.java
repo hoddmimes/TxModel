@@ -3,13 +3,13 @@ package com.hoddmimes.txtest.aux.txlogger;
 public class TxlogReplayRecord
 {
     private String mFilename;
-    private long mReplayOption;
+    private long mMsgSeqno;
     private byte[] mData;
 
-    public TxlogReplayRecord( byte[] pData, String pFilename, int pReplayOption ) {
+    public TxlogReplayRecord( byte[] pData, String pFilename, long pMsgSeqno ) {
         mFilename = pFilename;
         mData = pData;
-        mReplayOption = pReplayOption;
+        mMsgSeqno = pMsgSeqno;
     }
 
 
@@ -17,8 +17,8 @@ public class TxlogReplayRecord
         return mFilename;
     }
 
-    public long getmReplayOption() {
-        return mReplayOption;
+    public long getMsgSeqno() {
+        return mMsgSeqno;
     }
 
     public byte[] getData() {
@@ -26,6 +26,6 @@ public class TxlogReplayRecord
     }
 
     public boolean isIgnored() {
-        return (mReplayOption == TxLogger.REPLAY_OPTION_IGNORE);
+        return (mMsgSeqno == 0);
     }
 }

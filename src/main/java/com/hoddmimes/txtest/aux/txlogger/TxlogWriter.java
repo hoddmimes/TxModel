@@ -21,7 +21,7 @@ public class TxlogWriter
     private int mLogfileSeqno = 0;
     private LogWriter mLogWriter;
     private ExecutorService mLogThread = Executors.newSingleThreadExecutor();
-
+    private long mMsgSequenceNo;
 
 
 
@@ -30,6 +30,7 @@ public class TxlogWriter
         mQueue = new LinkedBlockingQueue<>();
         mFile = null;
         findLogfileSeqno();
+        findMsgSeqno();
         mLogWriter = new LogWriter();
         mLogThread.execute( mLogWriter );
     }
@@ -45,22 +46,38 @@ public class TxlogWriter
         return this.mQueue.size();
     }
 
+    private void findMsgSeqno() {
+        String tLogfilePattern = null;
+        if (mTxLogger.mConfigLogFilePattern.contains(TxLogger.SEQUENCE_SEQUENCE)) {
+            tLogfilePattern = mTxLogger.mConfigLogFilePattern.replace(TxLogger.SEQUENCE_SEQUENCE,"*");
+        }
+        if (mTxLogger.mConfigLogFilePattern.contains(TxLogger.SEQUENCE_DATETIME)) {
+            tLogfilePattern = mTxLogger.mConfigLogFilePattern.replace(TxLogger.SEQUENCE_DATETIME,"*");
+        }
+        List<TxLogfile> tTxLogfiles = this.mTxLogger.listTxLogfiles(tLogfilePattern);
+        if (tTxLogfiles.size() == 0) {
+            this.mMsgSequenceNo = 0L;
+        } else {
+            this.mMsgSequenceNo = tTxLogfiles.get( tTxLogfiles.size() - 1).getLastSequenceNumber();
+        }
+    }
 
+    private void findLogfileSeqno() {
+        if (mTxLogger.mConfigLogFilePattern.contains(TxLogger.SEQUENCE_SEQUENCE)) {
+            FileUtilParse fnp = new FileUtilParse(mTxLogger.mConfigLogFilePattern);
+            List<String> tFilenames = fnp.listFilenames(true);
 
-    private void findLogfileSeqno()
-    {
-        FileUtilParse fnp = new FileUtilParse(mTxLogger.mConfigLogFilePattern);
-        List<String> tFilenames = fnp.listFilenames( true );
+            if (!tFilenames.isEmpty()) {
+                String tNamePrefix = fnp.getName().substring(0, fnp.getName().length() - TxLogger.SEQUENCE_SEQUENCE.length());
+                Pattern p = Pattern.compile(tNamePrefix + "(\\d+)\\." + fnp.getExtention());
 
-        if (!tFilenames.isEmpty()) {
-            Pattern p = Pattern.compile(".+_(\\d+)\\." + fnp.getExtention());
-            int tSeqNo = 1;
-            for( String fn : tFilenames) {
-                Matcher m = p.matcher( fn );
-                if (m.matches()) {
-                    int x = Integer.parseInt(m.group(1));
-                    if (x > mLogfileSeqno) {
-                        mLogfileSeqno = x;
+                for (String fn : tFilenames) {
+                    Matcher m = p.matcher(fn);
+                    if (m.matches()) {
+                        int x = Integer.parseInt(m.group(1));
+                        if (x > mLogfileSeqno) {
+                            mLogfileSeqno = x;
+                        }
                     }
                 }
             }
@@ -88,17 +105,15 @@ public class TxlogWriter
         SimpleDateFormat sdf = new SimpleDateFormat("yyMMdd_HHmmss_SSS");
         if (mTxLogger.mConfigLogFilePattern.contains("#datetime#")) {
             return mTxLogger.mConfigLogFilePattern.replace("#datetime#", sdf.format(System.currentTimeMillis()));
-        }
-        FileUtilParse fnp = new FileUtilParse( mTxLogger.mConfigLogFilePattern);
-        if (fnp.getExtention().length() == 0) {
-            return  fnp.getFullname() + "_" + String.valueOf( ++mLogfileSeqno );
+        } else if (mTxLogger.mConfigLogFilePattern.contains(TxLogger.SEQUENCE_SEQUENCE)) {
+            // "foobar_#sequence#".log"
+            FileUtilParse fnp = new FileUtilParse(mTxLogger.mConfigLogFilePattern);
+            String tFilename = fnp.getDir() + fnp.getName().substring(0, fnp.getName().length() - TxLogger.SEQUENCE_SEQUENCE.length()) + String.valueOf(++mLogfileSeqno) + "." + fnp.getExtention();
+            return tFilename;
         } else {
-            String tFilename = fnp.getFullname();
-            return  tFilename.substring(0, tFilename.length() - (fnp.getExtention().length() + 1)) +
-                    "_" + String.valueOf( ++mLogfileSeqno ) +  "." + fnp.getExtention();
+            throw new RuntimeException("Invalid logfilename pattern");
         }
     }
-
 
     class LogWriter implements Runnable
     {
@@ -136,7 +151,7 @@ public class TxlogWriter
         private void msgToBuffer( MsgQueItem pMsgItm ) {
             if (wrtBuffer.doesMsgFit(pMsgItm.mMsg)) {
                 // Message fits into the current buffer
-                wrtBuffer.put(pMsgItm.mMsg,pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                wrtBuffer.put(pMsgItm.mMsg, ++mMsgSequenceNo, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
@@ -148,14 +163,14 @@ public class TxlogWriter
 
             // Will the message now fit into the (empty) write buffer  ?
             if (wrtBuffer.doesMsgFit(pMsgItm.mMsg)) {
-                wrtBuffer.put(pMsgItm.mMsg,pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                wrtBuffer.put(pMsgItm.mMsg, ++mMsgSequenceNo, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
             // The message is larger than the default write buffer. A temporary larger buffer
             // is allocated to fit the message
             WriteBuffer tmpBuffer = new WriteBuffer(pMsgItm.totalMsgSize(), mTxLogger.mConfigAlignSize, true);
-                tmpBuffer.put(pMsgItm.mMsg,pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                tmpBuffer.put(pMsgItm.mMsg, ++mMsgSequenceNo, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 writeBufferToFile( tmpBuffer );
                 tmpBuffer = null;
             }
@@ -190,6 +205,7 @@ public class TxlogWriter
                 pBuffer.flip();
                 mFileChannel.write( pBuffer.getBuffer());
                 mFileChannel.force(true);
+
                 pBuffer.executeCallbacks();
                 System.out.println("write buffer: " + pBuffer.getPosition());
                 pBuffer.clear();

@@ -16,7 +16,7 @@ public class TestTxlogReply {
     private JsonObject createConfiguration() {
         JsonObject jConfig = new JsonObject();
         jConfig.addProperty("max_file_size", 100 * 1000 * 1000);
-        jConfig.addProperty("log_file", "txlog_1.log");
+        jConfig.addProperty("log_files", "txlog_#sequence#.log");
         jConfig.addProperty("write_align_size", 512);
         jConfig.addProperty("write_buffer_size", 8192*3);
         jConfig.addProperty("write_holdback", 30);
@@ -26,11 +26,12 @@ public class TestTxlogReply {
     private void test()
     {
         int seqno = 0;
-        int direction = TxlogReplayer.FORWARD;
+        long logMsgSeqno = 0;
+        int direction = TxlogReplayer.BACKWARD;
 
         JsonObject tConfig = createConfiguration();
         TxLogger txl = new TxLogger( tConfig );
-        TxlogReplayer tReplayer = txl.getReplayer("./txlog_*.log", direction );
+        TxlogReplayer tReplayer = txl.getReplayer("./logs/txlog_*.log", direction );
         startTime = System.currentTimeMillis();
         int maxDelta = 0;
         int record_count = 0;
@@ -38,6 +39,7 @@ public class TestTxlogReply {
         TxlogReplayRecord tRec = tReplayer.next();
         while( tRec != null) {
             if (tRec != null) {
+                logMsgSeqno = tRec.getMsgSeqno();
                 record_count++;
                 String jStr = new String( tRec.getData());
                 JsonObject jMsg = JsonParser.parseString(jStr).getAsJsonObject();
@@ -61,7 +63,7 @@ public class TestTxlogReply {
             }
             tRec = tReplayer.next();
         }
-        System.out.println("All done, number of records: " + record_count);
+        System.out.println("All done, number of records: " + record_count + " last message seqno: " + logMsgSeqno);
     }
 
 

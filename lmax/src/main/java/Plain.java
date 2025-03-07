@@ -68,7 +68,7 @@ public class Plain
                         tEventList.clear();
                         mQueue.drainTo(tEventList);
                         for (Event evt : tEventList) {
-                            mTotalSum += tEvent.mValue;
+                            mTotalSum += evt.mValue;
                             mEventCount++;
                         }
                     }

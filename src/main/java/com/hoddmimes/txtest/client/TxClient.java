@@ -11,10 +11,12 @@ import java.util.Random;
 
 public class TxClient
 {
+    private int mAssetCount = 20;
     private String mHost = "127.0.0.1";
     private int mPort = 4001;
     private TcpThread mClient;
     private Random mRnd;
+    private int mTxToSend = 2000;
 
 
     public static void main(String[] args) {
@@ -31,28 +33,33 @@ public class TxClient
 
     private void test() {
         FEFactory tMsgFactory = new FEFactory();
+        long tTxStartTime;
+        long tTxTotalTime = 0;
+        long tTxCount = 0;
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < mTxToSend; i++) {
             UpdateMessage upd = createUpdateMessage((i+1));
             try {
+                tTxStartTime = System.nanoTime();
                 byte[] tbuffer = mClient.transceive( upd.messageToBytes());
                 MessageInterface tMsg = tMsgFactory.createMessage( tbuffer );
                 if (tMsg != null) {
-                    System.out.println(tMsg.toString());
+                    tTxTotalTime += (System.nanoTime() - tTxStartTime);
+                    tTxCount++;
                 }
             }
             catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
+        System.out.println("All done, tx_count: " + tTxCount + " average tx exec time: " + (((double) tTxTotalTime / (double) tTxCount) / 1000.0d) + " usec.");
     }
 
     private UpdateMessage createUpdateMessage( int pCount) {
         UpdateMessage upd = new UpdateMessage();
-        upd.setAssetId( 1 + mRnd.nextInt(20));
+        upd.setAssetId( 1 + mRnd.nextInt(mAssetCount));
         upd.setValue( Math.abs(mRnd.nextInt()));
         upd.setRequestId( pCount );
-        upd.setInitTime( System.currentTimeMillis());
         return upd;
     }
 

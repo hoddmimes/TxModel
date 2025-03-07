@@ -1,7 +1,8 @@
 {
     "nodes" : [ { "node_id" : 1, "ip" : "127.0.0.1", "tcp_port" : 3001,  "udp_port" : 3001,  "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
                 { "node_id" : 2, "ip" : "127.0.0.1", "tcp_port" : 3002,  "udp_port" : 3002 , "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
-                { "node_id" : 3, "ip" : "127.0.0.1", "tcp_port" : 3003,  "udp_port" : 3003 } ],
+                { "node_id" : 3, "ip" : "127.0.0.1", "tcp_port" : 3003,  "udp_port" : 3003 }
+              ],
 
 
 
@@ -12,7 +13,7 @@
           "node_id": 1
         },
         "preferred_standby": {
-          "node_idid": 2
+          "node_id": 2
         },
 
         "tx_logging": {
@@ -23,9 +24,12 @@
         }
       },
 
+      "quorum_server" : {  "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "vote_interval_sec" : 60 },
+
       "ipc_connections" : {
         "hb_intervals_sec" : 1,
-        "max_missed_hb" : 10
+        "max_missed_hb" : 10,
+        "disconnect_is_failure" : true
       },
 
       "executor_threads" : 4,

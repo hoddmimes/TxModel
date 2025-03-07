@@ -35,12 +35,13 @@ public class WriteBuffer
         return mTempBuffer;
     }
 
-    public void put( byte[] pMessage ) {
-        this.put( pMessage, null, null);
+    public void put( byte[] pMessage, long pSequenceNo ) {
+        this.put( pMessage,  pSequenceNo, null, null);
     }
-    public void put( byte[] pMessage, TxlogWriteCallback pCallback, Object pCallbackParameter ) {
+
+    public void put( byte[] pMessage, long pSequenceNo, TxlogWriteCallback pCallback, Object pCallbackParameter ) {
         mBuffer.putInt( pMessage.length);
-        mBuffer.putInt( TxLogger.REPLAY_OPTION_REPLAY );
+        mBuffer.putLong( pSequenceNo );
         mBuffer.put( pMessage );
         mBuffer.putInt( pMessage.length);
         mBuffer.putInt( TxLogger.MAGIC_END);
@@ -104,7 +105,7 @@ public class WriteBuffer
         }
 
         mBuffer.putInt(tFillerSize);
-        mBuffer.putInt(TxLogger.REPLAY_OPTION_IGNORE);
+        mBuffer.putLong(0);
         mBuffer.put(cFiller, 0, tFillerSize );
         mBuffer.putInt(tFillerSize);
         mBuffer.putInt(TxLogger.MAGIC_END);
