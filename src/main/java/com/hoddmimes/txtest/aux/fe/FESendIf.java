@@ -1,6 +1,7 @@
 package com.hoddmimes.txtest.aux.fe;
 
-import com.hoddmimes.distributor.messaging.MessageInterface;
+
+import com.hoddmimes.msgcompiler.messaging.MessageInterface;
 import com.hoddmimes.txtest.aux.net.TcpThread;
 
 public interface FESendIf

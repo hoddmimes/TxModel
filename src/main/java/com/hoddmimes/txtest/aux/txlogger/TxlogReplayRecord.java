@@ -28,4 +28,8 @@ public class TxlogReplayRecord
     public boolean isIgnored() {
         return (mMsgSeqno == 0);
     }
+
+    public String toString() {
+        return "TxlogReplayRecord[" + mFilename + " msgseqno: " + mMsgSeqno + " datasize: " + mData.length + "]";
+    }
 }

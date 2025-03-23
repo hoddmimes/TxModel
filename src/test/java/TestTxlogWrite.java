@@ -20,7 +20,7 @@ public class TestTxlogWrite implements TxlogWriteCallback {
 
     private JsonObject createConfiguration() {
         JsonObject jConfig = new JsonObject();
-        jConfig.addProperty("max_file_size", 10 * 1000 * 1000);
+        jConfig.addProperty("max_file_size", 2 * 1000 * 1000);
         jConfig.addProperty("log_files", "./logs/txlog_#sequence#.log");
         jConfig.addProperty("write_align_size", 512);
         jConfig.addProperty("write_buffer_size", 8192*3);
@@ -42,11 +42,12 @@ public class TestTxlogWrite implements TxlogWriteCallback {
         Random rnd = new Random();
         JsonObject tConfig = createConfiguration();
         TxLogger txl = new TxLogger( tConfig );
+        System.out.println("Start writing, current seqno: " + txl.getServerMessageSeqno());
         TxlogWriter txw = txl.getWriter();
         startTime = System.currentTimeMillis();
         for( int i = 0; i < LOOP_COUNT; i++ ) {
             if (i == (LOOP_COUNT - 1)) {
-                txw.queueMessage(createMessage((i+1)), this, null);
+                txw.queueMessage(createMessage((i+1)), this, txl);
             } else {
                 txw.queueMessage(createMessage((i+1)));
             }
@@ -63,7 +64,8 @@ public class TestTxlogWrite implements TxlogWriteCallback {
 
     @Override
     public void txlogWriteComplete(Object mCallbackParameter) {
-        System.out.println("Exec time: " + (System.currentTimeMillis() - startTime));
+        TxLogger txl = (TxLogger) mCallbackParameter;
+        System.out.println("Exec time: " + (System.currentTimeMillis() - startTime) + " current seqno: " + txl.getServerMessageSeqno());
         synchronized (this) {
             this.notifyAll();
         }

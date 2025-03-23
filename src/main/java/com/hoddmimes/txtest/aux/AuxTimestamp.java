@@ -7,7 +7,7 @@ public class AuxTimestamp
 {
     private static final long SEC = 1000000L; // as usec
     private static final long MS = 1000L; // as usec
-    private static int STACK_LEVEL = 3;
+    private static int STACK_LEVEL = 4;
     private static boolean DISABLED = false;
 
     private long                 mInitStamp;
@@ -31,10 +31,11 @@ public class AuxTimestamp
         STACK_LEVEL = pLevel;
     }
 
+    public static boolean isDisabled() {
+        return DISABLED;
+    }
 
-
-
-    public synchronized  void add( String pLabel ) {
+    public synchronized  void add(String pLabel ) {
         if (DISABLED) { return; }
         this.add( pLabel,STACK_LEVEL);
     }
@@ -65,6 +66,17 @@ public class AuxTimestamp
             return 0L;
         }
         return ((mEntries.get( mEntries.size() - 1).mStamp  -  mInitStamp ) / MS);
+    }
+
+    public String formatUsecTime() {
+        if (DISABLED) { return ""; }
+        String s;
+        long uSec  = getTotalTimeUsec();
+        if (uSec == 0) {
+            return "000";
+        }
+        s = String.format("%d (usec)", uSec);
+        return s;
     }
 
     public String formatMsTime() {
@@ -127,7 +139,7 @@ public class AuxTimestamp
             tPrevStamp = tse.mStamp;
         }
 
-        sb.append( "Total time "  + formatMsTime());
+        sb.append( "Total time "  + formatUsecTime());
         return sb.toString();
     }
 
@@ -202,25 +214,23 @@ public class AuxTimestamp
     }
 
     public static void main( String[] args ) {
-        AuxTimestamp at = new AuxTimestamp();
-        at.test02();
-    }
+        AuxTimestamp ts = new AuxTimestamp();
 
-            /*
 
         ts.add("TS-2");
-        for( int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 1000; i++) {
             long x = System.nanoTime();
         }
         ts.add("TS-3");
         ts.add("Send Processed Request Message Response TimestampCntx  foo");
-        for( int i = 0; i < 5000000; i++) {
+        for (int i = 0; i < 5000000; i++) {
             long x = System.nanoTime();
         }
         ts.add("TS-4");
 
 
-        //System.out.println("AuxTime: " + ts.formatTotalTime() + " usec: " + ts.getTotalTimeUsec());
-*/
+        System.out.println("AuxTime: " + ts.formatTotalTime() + " usec: " + ts.getTotalTimeUsec());
+        System.out.println(ts.toString());
+    }
 
 }

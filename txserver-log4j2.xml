@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration name="txtest" status="ERROR">
+<Configuration name="txserver" status="ERROR">
   <Appenders>
   	<File name="FILE"  fileName="TxTest.log">
 			<PatternLayout>
@@ -18,7 +18,16 @@
 			<AppenderRef ref="STDOUT"/>
 		</Root>
 
-		<logger name="com.hoddmimes" level="INFO" additivity="false">
+		<logger name="com.hoddmimes.txtest.server.TxExecutor" additivity="false" level="ERROR">
+			<appender-ref ref="STDOUT" />
+			<AppenderRef ref="FILE"/>
+		</logger>
+
+		<logger name="com.hoddmimes.txtest.aux.ipc" additivity="false" level="INFO">
+			<appender-ref ref="STDOUT" />
+			<AppenderRef ref="FILE"/>
+		</logger>
+		<logger name="com.hoddmimes"  additivity="false" level="INFO">
 			<AppenderRef ref="STDOUT"/>
 			<AppenderRef ref="FILE"/>
 		</logger>

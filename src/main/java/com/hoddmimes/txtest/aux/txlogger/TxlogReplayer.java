@@ -3,6 +3,7 @@ package com.hoddmimes.txtest.aux.txlogger;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
 import java.util.List;
 
 public class TxlogReplayer {
@@ -14,19 +15,57 @@ public class TxlogReplayer {
     private List<String> mLogFilenames;
     private int mCurrentFileIndex;
     private FileReplayHandler mReplayHandler;
+    private long mFromMessageSeqno;
 
 
     public TxlogReplayer(String pFilenamePattern, int pDirection) {
+        this(pFilenamePattern, pDirection, -1L);
+    }
+
+    public TxlogReplayer(String pFilenamePattern, int pDirection, long pFromMessageSeqno) {
+        this.mFromMessageSeqno = pFromMessageSeqno;
         this.mFilenamePattern = pFilenamePattern;
         this.mDirection = pDirection;
-        this.listLogfiles();
-        if (mLogFilenames.size() > 0)
-            this.mCurrentFileIndex = (mDirection == FORWARD) ? 0 : mLogFilenames.size() - 1;
-        mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection);
+        List<TxLogfile> tTxLogfiles = TxLogger.listPatternTxLogfiles(pFilenamePattern);
+
+        if (tTxLogfiles.size() == 0) {
+            mReplayHandler = null;
+        } else {
+            mLogFilenames = new ArrayList<>();
+            if (pFromMessageSeqno >= 0) {
+                if (pDirection == FORWARD) {
+                    for (TxLogfile tTxLogfile : tTxLogfiles) {
+                        if (pFromMessageSeqno <= tTxLogfile.getLastSequenceNumber()) {
+                            mLogFilenames.add(tTxLogfile.getFullname());
+                        }
+                    }
+                } else { // backward
+                    for (TxLogfile tTxLogfile : tTxLogfiles) {
+                        if (pFromMessageSeqno >= tTxLogfile.getFirstSequenceNumber()) {
+                            mLogFilenames.add(tTxLogfile.getFullname());
+                        }
+                    }
+                }
+            } else {
+                listLogfiles();
+            }
+
+            if (mLogFilenames.size() > 0) {
+                this.mCurrentFileIndex = (mDirection == FORWARD) ? 0 : mLogFilenames.size() - 1;
+                mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, pFromMessageSeqno );
+            } else {
+                mReplayHandler = null;
+            }
+            }
     }
 
 
+
     public  TxlogReplayRecord next() {
+        if (mReplayHandler == null) {
+            return null;
+        }
+
         try {
 
             TxlogReplayRecord tRec = mReplayHandler.nextRecord();
@@ -37,7 +76,7 @@ public class TxlogReplayer {
                         return null;
                     }
                     mReplayHandler.close();
-                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection);
+                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
                 }
                 else {
                     mCurrentFileIndex--;
@@ -45,7 +84,7 @@ public class TxlogReplayer {
                         return null;
                     }
                     mReplayHandler.close();
-                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection);
+                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
                 }
                 tRec = mReplayHandler.nextRecord();
             }
@@ -83,22 +122,28 @@ public class TxlogReplayer {
         private String  mFilename;
         private int mDirection;
         private long mPos;
+        private long mFromMessageSeqno;
 
-        FileReplayHandler( String pFilename, int pDirection ) {
-            mFilename = pFilename;
-            System.out.println("Replaying file: " + pFilename + " direction: " + ((pDirection == TxlogReplayer.FORWARD) ? "FORWARD" : "BACKWARD"));
-            try {
-                mDirection = pDirection;
-                mFile = new RandomAccessFile(pFilename, "r");
-                mFileChannel = mFile.getChannel();
-                if (mDirection == TxlogReplayer.BACKWARD) {
-                    alignAtLastRecord();
-                } else {
-                    mPos = 0;
+
+        FileReplayHandler( String pFilename, int pDirection, long pMessageSeqno ) {
+            mFromMessageSeqno = pMessageSeqno;
+            mFilename = (pFilename == null) ? "null" : pFilename;
+            //System.out.println("Replaying file: " + pFilename + " direction: " + ((pDirection == TxlogReplayer.FORWARD) ? "FORWARD" : "BACKWARD") + " from seqno: " + mFromMessageSeqno );
+            if (pFilename != null) {
+                try {
+                    mDirection = pDirection;
+                    mFile = new RandomAccessFile(pFilename, "r");
+                    mFileChannel = mFile.getChannel();
+                    if (mDirection == TxlogReplayer.BACKWARD) {
+                        alignAtLastRecord();
+                    } else {
+                        mPos = 0;
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            }
-            catch( IOException e) {
-                throw new RuntimeException(e);
+            } else {
+
             }
         }
 
@@ -106,7 +151,7 @@ public class TxlogReplayer {
             mFile.close();
         }
 
-        int getTotalRecordSize() throws IOException
+        private int getTotalRecordSize() throws IOException
         {
              int tTotSize = 0;
              long tPos = mFileChannel.position();
@@ -185,7 +230,14 @@ public class TxlogReplayer {
                     txlrec = readTxlRecord();
                     mPos += tTotRecSize;
                 }
-                if (!txlrec.isIgnored()) {
+
+                if (!txlrec.isIgnored() &&
+                        (  (mFromMessageSeqno == -1) ||
+                           ((mDirection == FORWARD) && (mFromMessageSeqno <= txlrec.getMsgSeqno())) ||
+                           ((mDirection == BACKWARD) && (txlrec.getMsgSeqno() <= mFromMessageSeqno))
+                        )
+                    )
+                {
                     return txlrec;
                 }
             }

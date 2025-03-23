@@ -28,8 +28,8 @@ public class TxExecutor
     }
 
     public void queueRequest(TxCntx pTxCntx) {
-        int tQueueIndex = pTxCntx.mRequest.getAssetId() % mQueues.length;
-        mQueues[tQueueIndex].add( new TxEventMsgRequest( mTxServer, pTxCntx ));
+        int tQueueIndex = pTxCntx.getAssetId() % mQueues.length;
+        mQueues[tQueueIndex].add( new TxEventMsgRequest( mTxServer, pTxCntx, mLogger));
 
     }
 
@@ -58,6 +58,4 @@ public class TxExecutor
     {
         public abstract void execute();
     }
-
-
 }

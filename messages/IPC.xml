@@ -2,32 +2,64 @@
 
 <Messages mongoSupport="false">
 
-    <Message name="Heartbeat">
-        <Attribute name="nodeId" type="int"/>
-        <Attribute name="serverState" type="int"/>
-    </Message>
 
-    <!-- Message sent from a server node at startup to the quorum server to find out what its role should be -->
+
+    <!-- Message sent from a server when it believes  it should have a new role  -->
     <Message name="QuorumVoteRequest">
-        <Attribute name="service" type="String"/>
         <Attribute name="nodeId" type="int"/>
-        <Attribute name="requestedServerState" type="int"/>
+        <Attribute name="wannabeRole" type="int"/>
+        <Attribute name="currentRole" type="int"/>
         <Attribute name="currentSeqno" type="long"/>
     </Message>
 
-    <!-- Message sent from quorum server to a server node at startup to inform about what role it should have -->
+    <!-- Message sent from quorum server when it dedicates a new role to server -->
     <Message name="QuorumVoteResponse">
         <Attribute name="nodeId" type="int"/>
-        <Attribute name="serverState" type="int"/>
+        <Attribute name="role" type="int"/>
+        <Attribute name="primaryNodeId" type="int"/>
         <Attribute name="reason" type="String"/>
     </Message>
 
 
-    <Message name="QuorumHeartbeat">
-        <Attribute name="service" type="String"/>
+
+    <!-- A server will periodically publish it state given that the server is synchronized and have its role -->
+    <!-- set by in a vote process -->
+
+    <Message name="QuorumStatusHeartbeat">
         <Attribute name="nodeId" type="int"/>
-        <Attribute name="serverState" type="int"/>
+        <Attribute name="serverRole" type="int"/>
+        <Attribute name="currentSeqno" type="long"/>
+    </Message>
+
+
+    <Message name="Heartbeat">
+        <Attribute name="nodeId" type="int"/>
+    </Message>
+
+    <Message name="ToStandby">
+        <Attribute name="sequenceNumber" type="long"/>
+        <Attribute name="message" type="MessageInterface"/>
+    </Message>
+
+    <Message name="FromStandby">
+        <Attribute name="sequenceNumber" type="long"/>
+        <Attribute name="assetId" type="int"/>
+    </Message>
+
+    <Message name="StandbyRecoveryRequest">
+        <Attribute name="lastKnownMessageSeqno" type="long"/>
+        <Attribute name="handleId" type="int"/>
+    </Message>
+
+    <Message name="RecoveryData">
+        <Attribute name="data" type="byte[]"/>
         <Attribute name="msgSeqno" type="long"/>
+    </Message>
+
+    <Message name="StandbyRecoveryResponse">
+        <Attribute name="endOfData" type="boolean"/>
+        <Attribute name="handleId" type="int"/>
+        <Attribute name="messageData" type="RecoveryData" array="[]"/>
     </Message>
 
 

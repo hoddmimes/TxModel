@@ -1,29 +1,53 @@
 package com.hoddmimes.txtest.quorum;
 
-import com.hoddmimes.txtest.generated.ipc.messages.QuorumHeartbeat;
 import com.hoddmimes.txtest.generated.ipc.messages.QuorumVoteRequest;
-import com.hoddmimes.txtest.server.ServerState;
+import com.hoddmimes.txtest.server.ServerRole;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class QuorumService {
-    final List<QNode> mNodes = new ArrayList<>();
-    final String mServiceName;
+    final List<QuorumNode> mNodes = new ArrayList<>();
     private final Logger mLogger;
     private final long mVoteInterval;
 
     private long firstSavedVoteRequest = 0L;
     private Map<Integer, QuorumVoteRequest> voteRequests = new HashMap<>();
 
-    public QuorumService(String serviceName, long voteIntervalMs, Logger logger) {
-        this.mServiceName = serviceName;
+    public QuorumService(long voteIntervalMs, Logger logger) {
         this.mVoteInterval = voteIntervalMs;
         this.mLogger = logger;
     }
 
+    public QuorumNode getPrimary() {
+        return mNodes.stream().filter(n -> (n.getRole() == ServerRole.PRIMARY)).findFirst().orElse(null);
+    }
+
     public boolean validateVoteRequests() {
+        // In a failover situation the primary will not be connected and will not provide any vote requests
+        if (voteRequests.size() == 1) {
+            QuorumVoteRequest voteRequest = voteRequests.values().stream().findFirst().orElse(null);
+            QuorumNode tNode = this.getNode(voteRequest.getNodeId());
+
+
+            if ((voteRequest.getWannabeRole() == ServerRole.PRIMARY.getValue()) &&
+                    (tNode.getRole() == ServerRole.STANDBY) &&
+                    (voteRequest.getCurrentRole() == ServerRole.STANDBY.getValue())) {
+                // Failover from primary to standby
+                for (QuorumNode quorumNode : mNodes) {
+                    if (tNode.getNodeId() == quorumNode.getNodeId()) {
+                        quorumNode.setState(ServerRole.PRIMARY);
+                    } else {
+                        quorumNode.setState(ServerRole.STANDBY);
+                    }
+                    mLogger.info("[VOTE] SET STATE {} for node {} (primary/standby failover)");
+                }
+                return true;
+            }
+        }
+
+
         if (voteRequests.size() != mNodes.size()) {
             return false;
         }
@@ -32,25 +56,27 @@ public class QuorumService {
                 .sorted(Comparator.comparingLong(QuorumVoteRequest::getCurrentSeqno))
                 .collect(Collectors.toList());
 
+        Collections.reverse(sortedVotes);
+
         boolean allSeqNoZero = sortedVotes.stream().allMatch(vr -> vr.getCurrentSeqno() == 0L);
         boolean firstTwoEqualSeqNo = sortedVotes.size() > 1 &&
                 sortedVotes.get(0).getCurrentSeqno() == sortedVotes.get(1).getCurrentSeqno();
 
         if (allSeqNoZero || firstTwoEqualSeqNo) {
             mNodes.forEach(n -> {
-                n.setmState(n.ismPreferredPrimary() ? ServerState.PRIMARY : ServerState.STANDBY);
-                mLogger.info("VOTE: set {} as {} (preferred-primary: {}, seqno: 0)",
-                        n, n.getmState(), n.ismPreferredPrimary());
+                n.setState(n.isPreferredPrimary() ? ServerRole.PRIMARY : ServerRole.STANDBY);
+                mLogger.info("[VOTE] SET STATE {} for node {} (preferred-primary: {}, seqno: 0 or equal)",
+                        n.getRole(), n,  n.isPreferredPrimary());
             });
             return true;
         }
 
         for (int i = 0; i < sortedVotes.size(); i++) {
-            QuorumVoteRequest vote = sortedVotes.get(i);
-            QNode node = getNode(vote.getNodeId());
-            if (node != null) {
-                node.setmState(i == 0 ? ServerState.PRIMARY : ServerState.STANDBY);
-                mLogger.info("VOTE: SET STATE {} as {} (seqno: {})", node, node.getmState(), vote.getCurrentSeqno());
+            QuorumVoteRequest voteRequest = sortedVotes.get(i);
+            QuorumNode quorumNode = getNode(voteRequest.getNodeId());
+            if (quorumNode != null) {
+                quorumNode.setState(i == 0 ? ServerRole.PRIMARY : ServerRole.STANDBY);
+                mLogger.info("VOTE: SET STATE {} for node {} (seqno: {})",  quorumNode.getRole(), quorumNode, voteRequest.getCurrentSeqno());
             }
         }
         return true;
@@ -58,6 +84,8 @@ public class QuorumService {
 
     public boolean addVoteRequestAndCheckIfExpired(QuorumVoteRequest voteRequest) {
         long now = System.currentTimeMillis();
+
+        // Have the voting lasted longer then voting interval, if so clear and start all over again
         if (firstSavedVoteRequest != 0 && (now - firstSavedVoteRequest) >= mVoteInterval) {
             voteRequests.clear();
             firstSavedVoteRequest = 0L;
@@ -72,70 +100,14 @@ public class QuorumService {
         return false;
     }
 
-    public ServerState findNodeState(int nodeId) {
-        QNode node = getNode(nodeId);
-        if (node == null) {
-            return ServerState.UNKNOWN;
-        }
-        if (node.getmState() != ServerState.UNKNOWN) {
-            return node.getmState();
-        }
-        return mNodes.stream().anyMatch(n -> n.getmState() == ServerState.PRIMARY) ?
-                ServerState.STANDBY : ServerState.UNKNOWN;
-    }
 
     public void addNode(int id, String ip, int port, boolean preferredPrimary) {
-        mNodes.add(new QNode(id, ip, port, preferredPrimary));
+        mNodes.add(new QuorumNode(id, preferredPrimary));
     }
 
-    QNode getNode(int nodeId) {
-        return mNodes.stream().filter(n -> n.mId == nodeId).findFirst().orElse(null);
+    QuorumNode getNode(int nodeId) {
+        return mNodes.stream().filter(n -> n.getNodeId() == nodeId).findFirst().orElse(null);
     }
 
-    class QNode {
-         final String mIP;
-         final int mPort;
-         final int mId;
-         final boolean mPreferredPrimary;
-         ServerState mState = ServerState.UNKNOWN;
-         boolean isConnected = false;
-         long mLatestHeartbeat = System.currentTimeMillis();
 
-        public QNode(int id, String ip, int port, boolean preferredPrimary) {
-            this.mId = id;
-            this.mIP = ip;
-            this.mPort = port;
-            this.mPreferredPrimary = preferredPrimary;
-        }
-
-        public int getId() { return mId; }
-        public boolean ismPreferredPrimary() { return mPreferredPrimary; }
-        public ServerState getmState() { return mState; }
-        public void setmState(ServerState mState) { this.mState = mState; }
-
-        public void heartbeat(QuorumHeartbeat message) {
-            mLatestHeartbeat = System.currentTimeMillis();
-            if (!isConnected) {
-                isConnected = true;
-                mLogger.info("Node {} ({}) is now connected", mId, mIP);
-            }
-            if (mState == ServerState.UNKNOWN) {
-                mState = ServerState.valueOf(message.getServerState());
-                mLogger.info("Node {} ({}) updated state to: {}", mId, mIP, mState);
-            }
-            if (mState.getValue() != message.getServerState()) {
-                String errorMsg = String.format("Node %d (%s) inconsistent state: current=%s, HB=%s",
-                        mId, mIP, mState, ServerState.valueOf(message.getServerState()));
-                mLogger.error(errorMsg);
-                throw new RuntimeException(errorMsg);
-            }
-            mLogger.trace("heartbeat from node: {} state: {}", mId, mState );
-        }
-
-        @Override
-        public String toString() {
-            return String.format("QNode{id=%d, ip=%s, port=%d, preferredPrimary=%b, state=%s}",
-                    mId, mIP, mPort, mPreferredPrimary, mState);
-        }
-    }
 }

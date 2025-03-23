@@ -81,7 +81,7 @@ public class FileUtilParse {
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         ArrayList<String> tFilenames = new ArrayList<>();
         for (int i = 0; i < tFiles.length; i++) {
-            System.out.println(tFiles[i].getAbsoluteFile().toString() + "  " + sdf.format(tFiles[i].lastModified()));
+            //System.out.println(tFiles[i].getAbsoluteFile().toString() + "  " + sdf.format(tFiles[i].lastModified()));
             tFilenames.add(tFiles[i].getAbsoluteFile().toString());
         }
         return tFilenames;

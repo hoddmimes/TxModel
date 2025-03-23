@@ -26,7 +26,7 @@ import java.text.SimpleDateFormat;
 public class TcpThread extends Thread
 {
 	static final int                HDR_SIZE = 8;
-	static enum ThreadType          { ThreadClient,ThreadServer};
+	public static enum ThreadType   { ThreadClient,ThreadServer};
 	private static int				MAGIC_SIGN = 0x504f4242;
     private static int              mClientIndex = 0;
 	private static int              BUFFER_SIZE = 4096;
@@ -85,6 +85,10 @@ public class TcpThread extends Thread
 			return "<unknown>";
 		}
 
+	}
+
+	public ThreadType getThreadType() {
+		return mThreadType;
 	}
 
 	public String getSessionId() {

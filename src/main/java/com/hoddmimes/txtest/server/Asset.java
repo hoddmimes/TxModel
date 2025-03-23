@@ -6,14 +6,14 @@ public class Asset
 {
     private int     mAssetId;
     private int     mValue;
-    private long    mUpdateTime;
-    private int     mSeqNo;
+    private long    mUpdateCount;
+
 
     public Asset( int pAssetId ) {
         mAssetId = pAssetId;
         mValue = 0;
-        mUpdateTime = 0;
-        mSeqNo = 0;
+        mUpdateCount = 0;
+
     }
 
     public int getAssetId() {
@@ -24,26 +24,20 @@ public class Asset
         return mValue;
     }
 
-    public long getUpdateTime() {
-        return mUpdateTime;
+    public long getUpdateCount() {
+        return mUpdateCount;
     }
 
-    public int getSeqNo() {
-        return mSeqNo;
-    }
-
-    public void update( int pNewValue ) {
-        mValue = pNewValue;
-        mUpdateTime = System.currentTimeMillis();
-        mSeqNo++;
+    public void update( int pUpdateValue ) {
+        mValue += pUpdateValue;
+        mUpdateCount++;
     }
 
     public byte[] encode() {
         ByteBuffer tBuffer = ByteBuffer.allocate(16);
         tBuffer.putInt( mAssetId );
         tBuffer.putInt( mValue );
-        tBuffer.putLong( mUpdateTime );
-        tBuffer.putInt( mSeqNo );
+        tBuffer.putLong( mUpdateCount );
         return tBuffer.array();
     }
 
@@ -51,7 +45,6 @@ public class Asset
         ByteBuffer tBuffer = ByteBuffer.wrap( pBuffer );
         mAssetId = tBuffer.getInt();
         mValue = tBuffer.getInt();
-        mUpdateTime = tBuffer.getLong();
-        mSeqNo = tBuffer.getInt();
+        mUpdateCount = tBuffer.getLong();
     }
 }

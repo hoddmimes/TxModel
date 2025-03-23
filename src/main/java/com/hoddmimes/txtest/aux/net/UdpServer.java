@@ -9,7 +9,7 @@ public class UdpServer extends Thread
 {
     private int mBufferSize;
     private int mPort;
-    private DatagramSocket mServerSocket;
+    private volatile DatagramSocket mServerSocket;
     private volatile boolean mClosed;
     private UdpCallbacksIf mCallbacks;
 
@@ -19,7 +19,7 @@ public class UdpServer extends Thread
         mBufferSize = pBufferSize;
         mClosed = false;
         mPort = port;
-        DatagramSocket mServerSocket = new DatagramSocket(mPort);
+        mServerSocket = new DatagramSocket(mPort);
         this.start();
     }
 

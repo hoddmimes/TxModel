@@ -11,8 +11,8 @@ repositories {
 
 
 task(generateMessages, type: JavaExec ) {
-    mainClass = 'com.hoddmimes.transform.MessageCompiler'
-    classpath = files('./libs/messageCompiler-1.5.jar')
+    mainClass = 'MessageCompiler'
+    classpath = files('./libs/MessageCompiler-1.6.jar')
     args  '-xml', './messages/TxTestFileSet.xml'
     doLast {
         println "Generated Matcher Messages"
@@ -29,12 +29,40 @@ task deleteGeneratedFiles(type: Delete) {
 }
 
 
+task buildTxTestJar (type: Jar ) {
+    archiveBaseName= 'TxTest'
+    destinationDirectory = file("./")
+
+    from {
+        configurations.runtimeClasspath.collect{ it.isDirectory() ? it : zipTree(it) }
+    } with jar
+
+    exclude "META-INF/*.SF"
+    exclude "META-INF/*.DSA"
+    exclude "META-INF/*.RSA"
+
+    from('build/classes/java/main') {
+        include '**/*.class'
+
+    }
+    duplicatesStrategy = 'exclude'
+
+    manifest {
+        attributes 'Implementation-Title': 'TxTest', 'Implementation-Version': version
+    }
+    doLast {
+        println('Successfully build TxTest JAR !')
+    }
+}
+
+
 compileJava.dependsOn( [generateMessages] )
 clean.dependsOn(deleteGeneratedFiles)
+build.finalizedBy(buildTxTestJar)
 
 
 dependencies {
-    implementation fileTree(dir: './libs', include: 'messageCompiler-1.5.jar')
+    implementation fileTree(dir: './libs', include: 'MessageCompiler-1.6.jar')
     implementation group: 'commons-io', name: 'commons-io', version: '2.18.0'
     implementation group: 'com.google.code.gson', name: 'gson', version: '2.12.1'
     implementation group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.24.3'

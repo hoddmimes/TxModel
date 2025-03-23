@@ -1,6 +1,6 @@
 {
     "nodes" : [ { "node_id" : 1, "ip" : "127.0.0.1", "tcp_port" : 3001,  "udp_port" : 3001,  "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
-                { "node_id" : 2, "ip" : "127.0.0.1", "tcp_port" : 3002,  "udp_port" : 3002 , "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4001}},
+                { "node_id" : 2, "ip" : "127.0.0.1", "tcp_port" : 3002,  "udp_port" : 3002 , "frontend_interface" : { "net_interface" : "0.0.0.0" , "tcpip_port" : 4002}},
                 { "node_id" : 3, "ip" : "127.0.0.1", "tcp_port" : 3003,  "udp_port" : 3003 }
               ],
 
@@ -8,7 +8,6 @@
 
 
       "service" : {
-        "name": "test_tx",
         "preferred_primary": {
           "node_id": 1
         },
@@ -17,14 +16,14 @@
         },
 
         "tx_logging": {
-          "log_path": "./test_tx_#datetime#.log",
-          "max_file_size": 25000000,
+          "log_files": "./tx_test_#datetime#.log",
+          "max_file_size": 10000000,
           "write_align_size": 512,
           "write_buffer_size": 24576
         }
       },
 
-      "quorum_server" : {  "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "vote_interval_sec" : 60 },
+      "quorum_server" : {  "mode" : "FAILOVER", "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "voting_process_timeout_sec" : 120 },
 
       "ipc_connections" : {
         "hb_intervals_sec" : 1,
@@ -33,6 +32,8 @@
       },
 
       "executor_threads" : 4,
+      "timestamps" : false,
+      "tx_stat_print_interval_tx_count" : 5000,
 
       "number_of_assets"  : 100
 }

@@ -5,8 +5,9 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
+import java.util.Comparator;
 
-public class TxLogfile
+public class TxLogfile implements Comparator<TxLogfile>
 {
    private String   mFullname;
    private long     mLastmodified;
@@ -111,4 +112,14 @@ public class TxLogfile
        return "file: " + mFullname + " size: " + mSize + " modified: " + simpleDateFormat.format(mLastmodified ) + " first: " + mFirstSequenceNumber + " last: " + mLastSequenceNumber;
     }
 
+    @Override
+    public int compare(TxLogfile f1, TxLogfile f2) {
+        if (f1.getFirstSequenceNumber() != f2.getFirstSequenceNumber()) {
+            return Long.compare(f1.getFirstSequenceNumber(), f2.getFirstSequenceNumber());
+        }
+        if (f1.getLastSequenceNumber() != f2.getLastSequenceNumber()) {
+            return Long.compare(f1.getLastSequenceNumber(), f2.getLastSequenceNumber());
+        }
+        return 0;
+    }
 }

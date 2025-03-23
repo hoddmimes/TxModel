@@ -3,37 +3,32 @@ package com.hoddmimes.txtest.quorum;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.hoddmimes.distributor.messaging.MessageInterface;
-import com.hoddmimes.txtest.aux.net.TcpServer;
-import com.hoddmimes.txtest.aux.net.TcpServerCallbackIf;
-import com.hoddmimes.txtest.aux.net.TcpThread;
-import com.hoddmimes.txtest.aux.net.TcpThreadCallbackIf;
+import com.hoddmimes.txtest.aux.ipc.IpcCallbacks;
+import com.hoddmimes.txtest.aux.ipc.IpcCntx;
+import com.hoddmimes.txtest.aux.ipc.IpcController;
+import com.hoddmimes.txtest.aux.ipc.IpcNode;
 import com.hoddmimes.txtest.generated.ipc.messages.IPCFactory;
-import com.hoddmimes.txtest.generated.ipc.messages.QuorumHeartbeat;
+import com.hoddmimes.txtest.generated.ipc.messages.QuorumStatusHeartbeat;
 import com.hoddmimes.txtest.generated.ipc.messages.QuorumVoteRequest;
 import com.hoddmimes.txtest.generated.ipc.messages.QuorumVoteResponse;
-import com.hoddmimes.txtest.server.ServerState;
+import com.hoddmimes.txtest.server.ServerRole;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.HashMap;
 
-public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThreadCallbackIf
+public class QuorumServer implements IpcCallbacks
 {
     private JsonObject jConfiguration = null;
-    private JsonObject jQuorum = null;
-    private TcpServer mTcpServer;
+    private JsonObject jQuorumConfiguration = null;
+    private IpcController mIPC;
     private Logger mLogger;
-    private HashMap<String, QuorumService> mServices;
+    private QuorumService mService;
 
     private long mQuorumServerStartTime;
-
-
-    private long mHearbeatTimeoutMs;
-    private boolean mDisconnectIsFailure;
     private IPCFactory mMsgFactory;
+
 
 
     public static void main(String[] args) {
@@ -41,45 +36,41 @@ public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThre
         qs.parseArguments( args );
         qs.initialize();
         qs.declareAndRun();
-        qs.start();
+        while( true ) {
+            try { Thread.sleep(1000L); }
+            catch( InterruptedException e) {}
+        }
     }
 
     QuorumServer() {
-        mLogger = LogManager.getLogger(this.getClass().getSimpleName());
-        mServices = new HashMap<>();
+        mQuorumServerStartTime = System.currentTimeMillis();
+        mLogger = LogManager.getLogger(QuorumServer.class);
+        mLogger.trace("Starting Quorum Server");
         mMsgFactory = new IPCFactory();
     }
 
-    private void initialize() {
-        mQuorumServerStartTime = System.currentTimeMillis();
 
-        jQuorum = jConfiguration.get("quorum_server").getAsJsonObject();
-        long tVoteInterval = jQuorum.get("vote_interval_sec").getAsLong() * 1000L;
+
+    private void initialize() {
+
+        jQuorumConfiguration = jConfiguration.get("quorum_server").getAsJsonObject();
+        long tVoteInterval = jQuorumConfiguration.get("voting_process_timeout_sec").getAsLong() * 1000L;
 
         JsonObject jService = jConfiguration.get("service").getAsJsonObject();
-        String tServiceName = jService.get("name").getAsString();
-        QuorumService qs = new QuorumService( tServiceName, tVoteInterval, mLogger );
-        mServices.put( tServiceName, qs );
+        mService = new QuorumService(tVoteInterval, mLogger );
 
         // Parse out preferred primary node
         JsonObject jPreferedPrimary = jService.get("preferred_primary").getAsJsonObject();
         int tNodeId = jPreferedPrimary.get("node_id").getAsInt();
         JsonObject jNode = getConfigNode( tNodeId );
-        qs.addNode( tNodeId, jNode.get("ip").getAsString(), jNode.get("tcp_port").getAsInt(), true);
+        mService.addNode( tNodeId, jNode.get("ip").getAsString(), jNode.get("tcp_port").getAsInt(), true);
 
         // Parse out preferred standby node
         JsonObject jPreferedStdby = jService.get("preferred_standby").getAsJsonObject();
         tNodeId = jPreferedStdby.get("node_id").getAsInt();
         jNode = getConfigNode( tNodeId );
-        qs.addNode( tNodeId, jNode.get("ip").getAsString(), jNode.get("tcp_port").getAsInt(), false);
+        mService.addNode( tNodeId, jNode.get("ip").getAsString(), jNode.get("tcp_port").getAsInt(), false);
         mLogger.info("Initial defined service");
-
-        JsonObject jIPC = jConfiguration.get("ipc_connections").getAsJsonObject();
-        mHearbeatTimeoutMs = jIPC.get("hb_intervals_sec").getAsLong() * 1000L * jIPC.get("max_missed_hb").getAsLong();
-        mDisconnectIsFailure = jIPC.get("disconnect_is_failure").getAsBoolean();
-
-
-
     }
 
     private JsonObject getConfigNode( int pNodeId ) {
@@ -112,33 +103,24 @@ public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThre
 
     private void declareAndRun() {
         int tNodeId = jConfiguration.get("quorum_server").getAsJsonObject().get("node_id").getAsInt();
-        JsonObject jNode = getConfigNode( tNodeId );
 
-        int tPort = jNode.get("tcp_port").getAsInt();
-        String tIp = jNode.get("ip").getAsString();
-
-        try {
-            mTcpServer = new TcpServer( this );
-            mTcpServer.declareServer( tIp, tPort);
-            mLogger.info("Starting quorum server on interface " + tIp + " port " + tPort );
-        }
-        catch( IOException e) {
-            throw new RuntimeException("Failed to declare and run server on interface " + tIp + " port " + tPort);
-        }
+        mIPC = new IpcController( tNodeId, jConfiguration );
+        mIPC.addIpcCallback(this);
     }
 
-    synchronized private void processHearbeat( QuorumHeartbeat pMessage ) {
-        QuorumService tService = mServices.get( pMessage.getService() );
-        QuorumService.QNode tNode = tService.getNode( pMessage.getNodeId());
-        tNode.heartbeat( pMessage );
 
+
+    private void processQuorumStatusBdx( QuorumStatusHeartbeat pMessage ) {
+        QuorumNode tNode = mService.getNode( pMessage.getNodeId());
+        tNode.statusHeartbeat( pMessage );
     }
 
-    synchronized private QuorumVoteResponse returnVoteResponse( int pNodeId, ServerState pState, String pReason)  {
+    synchronized private QuorumVoteResponse returnVoteResponse(int pNodeId, ServerRole pRole, String pReason, int pPrimaryNodeId)  {
         QuorumVoteResponse tResponse = new QuorumVoteResponse();
         tResponse.setNodeId(pNodeId);
-        tResponse.setServerState(pState.getValue());
+        tResponse.setRole(pRole.getValue());
         tResponse.setReason(pReason);
+        tResponse.setPrimaryNodeId( pPrimaryNodeId );
         return tResponse;
     }
 
@@ -172,24 +154,41 @@ public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThre
      * @param pMessage (vote request)
      */
      QuorumVoteResponse processVoteRequest( QuorumVoteRequest pMessage ) {
-        QuorumService tService = mServices.get(pMessage.getService());
+         // The most intresting case is when the primary fails and the secondary would like to become the new primary
+         QuorumNode quorumNode = mService.getNode(pMessage.getNodeId()); // get requester nodeid
+
+         if ((quorumNode.getRole() == ServerRole.STANDBY) && (pMessage.getWannabeRole() == ServerRole.PRIMARY.getValue())) {
+             QuorumNode primaryNode = mService.getPrimary();
+             if ((primaryNode != null) && (!primaryNode.isIsConnected())) {
+                 mLogger.trace("VOTE: primary/standy failover !!! \n" + pMessage.toString());
+                 quorumNode.setState( ServerRole.PRIMARY );
+                 primaryNode.setState( ServerRole.STANDBY);
+                 mLogger.trace("VOTE: primary/standy failover !!!" + pMessage.toString());
+                 mLogger.trace("VOTE: SET STATE node " + quorumNode );
+                 mLogger.trace("VOTE: SET STATE node " + primaryNode );
+                 return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State changed stdby/primary failover", quorumNode.getNodeId());
+             }
+         }
+
         // Case 2
         // Check if we have a know state for the primary/standby nodes if so we can decide
-        ServerState tState = tService.findNodeState( pMessage.getNodeId());
-        if (tState != ServerState.UNKNOWN) {
-            mLogger.trace("VOTE: primary/standy can be decided based upon quorum server knowing the states \n" + pMessage.toString());
-            return returnVoteResponse( pMessage.getNodeId(), tState, "VOTE: State set from previous session by \"findNodeState\" ");
-        }
+         quorumNode = mService.getNode(pMessage.getNodeId());
+         if (quorumNode.isIsConnected() && quorumNode.getRole() != ServerRole.UNKNOWN) {
+             QuorumNode tPrimeryQuorumNode = mService.getPrimary();
+             mLogger.trace("VOTE: primary/standy can be decided based upon quorum server knowing the states \n" + pMessage.toString());
+             return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State set from previous session by \"findNodeState\" ", tPrimeryQuorumNode.getNodeId());
+         }
 
         // Check if we are still in the scout out phase, if so ignore the vote request
-        long tScoutDelay = jQuorum.get("startup_scout_initial_delay_sec").getAsLong() * 1000L;
+
+        long tScoutDelay = jQuorumConfiguration.get("startup_scout_initial_delay_sec").getAsLong() * 1000L;
         if ((System.currentTimeMillis() - mQuorumServerStartTime) < tScoutDelay) {
             mLogger.trace("VOTE: Still in the scout out phase, ignoring vote request from node id: \n" + pMessage.toString());
             return null;
         }
 
         // Save the vote request for a later decision
-        if (tService.addVoteRequestAndCheckIfExpired( pMessage )) {
+        if (mService.addVoteRequestAndCheckIfExpired( pMessage )) {
             // we will likely not be able to determine primary/standby roles since
             // all service nodes are not present withing the voting interval
             mLogger.trace("VOTE: Vote period has now expired, will not be able to determine primary/standby roles, ignoring vote request \n" + pMessage.toString());
@@ -197,10 +196,11 @@ public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThre
         }
 
         // Can we take a decision based upon available vote requests from service nodes?
-        if (tService.validateVoteRequests()) {
+        if (mService.validateVoteRequests()) {
             mLogger.trace("VOTE: Can now determine primary/standby roles having sufficient vote requests\n" + pMessage.toString());
-            QuorumService.QNode tNode = tService.getNode(pMessage.getNodeId());
-            return returnVoteResponse(pMessage.getNodeId(), tNode.mState, "VOTE: State set after completed voting process");
+            QuorumNode tNode = mService.getNode(pMessage.getNodeId());
+            QuorumNode tPrimaryNode = mService.getPrimary();
+            return returnVoteResponse(pMessage.getNodeId(), tNode.getRole(), "VOTE: State set after completed voting process", tPrimaryNode.getNodeId());
         }
 
          mLogger.trace("VOTE: Can not determine primary/standby roles, still waiting for servers to connect and send vote requests\n" + pMessage.toString());
@@ -209,87 +209,40 @@ public class QuorumServer extends Thread implements TcpServerCallbackIf, TcpThre
     }
 
 
-    synchronized void processMessage( TcpThread pClient, MessageInterface pMessage ) {
-        switch ( pMessage.getMessageId()) {
-            case QuorumHeartbeat.MESSAGE_ID:
-                processHearbeat(((QuorumHeartbeat) pMessage));
+    @Override
+    public synchronized void onMessage(IpcCntx pIpcCntx) {
+        switch ( pIpcCntx.getMessage().getMessageId()) {
+            case QuorumStatusHeartbeat.MESSAGE_ID:
+                processQuorumStatusBdx((QuorumStatusHeartbeat)  pIpcCntx.getMessage());
                 return;
             case QuorumVoteRequest.MESSAGE_ID:
-                QuorumVoteResponse tResponse = processVoteRequest( (QuorumVoteRequest) pMessage);
+                QuorumVoteResponse tResponse = processVoteRequest( (QuorumVoteRequest) pIpcCntx.getMessage());
                 if (tResponse != null) {
-                    try {
-                        pClient.send( tResponse.messageToBytes());
-                    }
+                    try {pIpcCntx.send( tResponse );}
                     catch( IOException e) {
-                        e.printStackTrace();
-                        pClient.close();
+                        mLogger.error("Failed to send vote response to node id: " + tResponse.getNodeId(), e);
                     }
                 }
                 return;
         }
-        mLogger.warn("Unknown server message " + pMessage.getMessageName());
+        mLogger.warn("Unknown server message " + pIpcCntx.getMessage().getMessageName());
     }
 
-    void nodeDisconnected( QuorumService pService, QuorumService.QNode pNode, boolean pHardDisconnect )
-    {
-        mLogger.warn("Node id: " + pNode.mId +  " disconnected, state: " + pNode.mState.toString() + " hard-disconnect: " + pHardDisconnect);
-        pNode.isConnected = false;
+    @Override
+    public synchronized void onConnect( IpcNode pIpcNode) {
+        mLogger.info( "Inbound connection from {}", pIpcNode.toString());
 
-    }
-
-    synchronized void checkHeartbeatTimeout() {
-        long tNow = System.currentTimeMillis();
-
-        for (QuorumService tService : mServices.values()) {
-            for (QuorumService.QNode tNode : tService.mNodes) {
-                if (tNow - tNode.mLatestHeartbeat > mHearbeatTimeoutMs) {
-                    nodeDisconnected( tService, tNode, false);
-                }
-            }
-        }
-    }
-
-    public void run()
-    {
-        while( true ) {
-            try { Thread.sleep( 1000L); }
-            catch( InterruptedException e) {}
-
-            checkHeartbeatTimeout();
-
+        QuorumNode quorumNode = mService.getNode( pIpcNode.getNodeId());
+        if ((quorumNode != null) && (!quorumNode.isIsConnected())) {
+             quorumNode.setConnected( true );
         }
     }
 
     @Override
-    public void tcpInboundConnection(TcpThread pThread) {
-        mLogger.info( "Inbound connection from " + pThread.getRemoteAddress());
-
-        pThread.setCallback( this );
-        pThread.start();
+    public void onDisconnect(IpcNode pIpcNode, boolean pHardReset ) {
+        QuorumNode quorumNode = mService.getNode( pIpcNode.getNodeId());
+        quorumNode.setConnected( false );
+        mLogger.info( "Node id: {} is now DISCONNECTED", pIpcNode.getNodeId());
     }
 
-    @Override
-    public void tcpMessageRead(TcpThread pThread, byte[] pBuffer)
-    {
-        MessageInterface tMessage = mMsgFactory.createMessage( pBuffer );
-        processMessage( pThread, tMessage );
-    }
-
-    @Override
-    public void tcpErrorEvent(TcpThread pThread, IOException pException) {
-        String tIpAddress = pThread.getRemoteAddress();
-        mLogger.warn("Node " + tIpAddress + " disconnected, reason: " + pException.getMessage());
-
-        synchronized ( this ) {
-            for (QuorumService tService : mServices.values()) {
-                for (QuorumService.QNode tNode : tService.mNodes) {
-                    if (tNode.mIP.equals(tIpAddress)) {
-                        if (mDisconnectIsFailure) {
-                            nodeDisconnected(tService, tNode, true);
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

@@ -1,6 +1,7 @@
 package com.hoddmimes.txtest.aux.fe;
 
-import com.hoddmimes.distributor.messaging.MessageInterface;
+
+import com.hoddmimes.msgcompiler.messaging.MessageInterface;
 import com.hoddmimes.txtest.aux.TxCntx;
 import com.hoddmimes.txtest.aux.net.TcpServer;
 import com.hoddmimes.txtest.aux.net.TcpServerCallbackIf;
@@ -22,7 +23,7 @@ public class FEController implements FESendIf, TcpServerCallbackIf, TcpThreadCal
     TcpServer   mTcpServer;
     Logger      mLogger;
     FECallbackIf mCallbackIf;
-    FEFactory   mMsgFactory;
+    FEFactory mMsgFactory;
 
     public FEController(int pNodeId, String pIpInterface, int pPort, FECallbackIf pCallback) {
         mLogger = LogManager.getLogger( this.getClass().getSimpleName() + "-" + pNodeId);
@@ -48,7 +49,7 @@ public class FEController implements FESendIf, TcpServerCallbackIf, TcpThreadCal
     @Override
     public void sendResponseToClient(TcpThread pThread, MessageInterface pResponse) {
         try {
-            pThread.send( pResponse.messageToBytes());
+            pThread.send( pResponse.getBytes());
         }
         catch(Exception e) {
             mLogger.warn("failed to send response to " + pThread.getRemoteAddress(), e);
