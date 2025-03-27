@@ -11,6 +11,7 @@ import com.hoddmimes.txtest.generated.ipc.messages.QuorumVoteRequest;
 import com.hoddmimes.txtest.generated.ipc.messages.QuorumVoteResponse;
 import com.hoddmimes.txtest.server.ServerMessageSeqnoInterface;
 import com.hoddmimes.txtest.server.ServerRole;
+import com.hoddmimes.txtest.server.TxServerIf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,28 +26,28 @@ public class QuorumStateController implements IpcCallbacks
     private  Mode mMode;
     private QuorumHeartbeatPublisher mPublisher;
     private Map<Integer, QuorumNode> mQuorumNodes;
-    private ServerMessageSeqnoInterface mServerSeqnoIf;
+    private ServerMessageSeqnoInterface mSeqnoIf;
     private int mMyNodeId;
     private int mQuorumNodeId;
     private IpcController mIpc;
     private Logger mLogger;
     private QuorumNode mMyQuorumNode;
 
-    public QuorumStateController(int pMyNodeId, JsonObject jConfiguration, IpcController pIpcController, ServerMessageSeqnoInterface pServerSeqnoIf ) {
+    public QuorumStateController( TxServerIf pTxServerIf ) {
         int tNodeId;
 
         mLogger = LogManager.getLogger(QuorumStateController.class);
-        mMode = Mode.valueOf(jConfiguration.get("quorum_server").getAsJsonObject().get("mode").getAsString());
+        mMode = Mode.valueOf(pTxServerIf.getConfiguration().get("quorum_server").getAsJsonObject().get("mode").getAsString());
 
         if (mMode == Mode.IGNORE) {
             return;
         }
 
-        mServerSeqnoIf = pServerSeqnoIf;
-        mIpc = pIpcController;
-        mMyNodeId = pMyNodeId;
-        mQuorumNodeId = jConfiguration.get("quorum_server").getAsJsonObject().get("node_id").getAsInt();
-        JsonObject jService = jConfiguration.get("service").getAsJsonObject();
+        mSeqnoIf = pTxServerIf.getMessageSequenceNumberIf();
+        mIpc = pTxServerIf.getIpcController();
+        mMyNodeId = pTxServerIf.getNodeId();
+        mQuorumNodeId = pTxServerIf.getConfiguration().get("quorum_server").getAsJsonObject().get("node_id").getAsInt();
+        JsonObject jService = pTxServerIf.getConfiguration().get("service").getAsJsonObject();
 
 
 
@@ -104,7 +105,7 @@ public class QuorumStateController implements IpcCallbacks
             mLogger.info("Synchronizing with Quorum server...");
             QuorumVoteRequest vr = new QuorumVoteRequest();
             vr.setNodeId( mMyNodeId );
-            vr.setCurrentSeqno( mServerSeqnoIf.getServerMessageSeqno() );
+            vr.setCurrentSeqno( mSeqnoIf.getServerMessageSeqno() );
             vr.setCurrentRole(mMyQuorumNode.getRole().getValue());
             vr.setWannabeRole(mMyQuorumNode.getRole().getValue());
             mLogger.trace("Sending vote-request " + vr);
@@ -165,7 +166,7 @@ public class QuorumStateController implements IpcCallbacks
             if ((pIpcNode.getNodeId() != mMyNodeId) && (tMyQuorumNode.getRole() == ServerRole.STANDBY)) {
                 QuorumVoteRequest vr = new QuorumVoteRequest();
                 vr.setNodeId(mMyNodeId);
-                vr.setCurrentSeqno(mServerSeqnoIf.getServerMessageSeqno());
+                vr.setCurrentSeqno(mSeqnoIf.getServerMessageSeqno());
                 vr.setCurrentRole(tMyQuorumNode.getRole().getValue());
                 vr.setWannabeRole(ServerRole.PRIMARY.getValue());
                 mLogger.trace("Sending vote-request to become PRIMARY" + vr);
@@ -183,7 +184,7 @@ public class QuorumStateController implements IpcCallbacks
 
         private void sendQuorumHeartbeat() {
             QuorumStatusHeartbeat qhb = new QuorumStatusHeartbeat();
-            qhb.setCurrentSeqno( mServerSeqnoIf.getServerMessageSeqno());
+            qhb.setCurrentSeqno( mSeqnoIf.getServerMessageSeqno());
             qhb.setNodeId( mMyNodeId );
             qhb.setServerRole( mMyQuorumNode.getRole().getValue());
 

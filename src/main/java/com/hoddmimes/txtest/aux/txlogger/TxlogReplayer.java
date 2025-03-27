@@ -7,33 +7,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TxlogReplayer {
-    public static int FORWARD = 0;
-    public static int BACKWARD = 1;
+    public static enum Direction {Forward, Backward};
 
-    private int mDirection;
-    private String mFilenamePattern;
+    final private Direction mDirection;
+    final private String mLogDir;
+    final private String mServiceName;
+
     private List<String> mLogFilenames;
     private int mCurrentFileIndex;
-    private FileReplayHandler mReplayHandler;
+    private FileReplayHandler mReplayer;
     private long mFromMessageSeqno;
+    private TxlogReplyEntryMessage mNextReplayEntry;          // Next replay record
 
-
-    public TxlogReplayer(String pFilenamePattern, int pDirection) {
-        this(pFilenamePattern, pDirection, -1L);
+    public TxlogReplayer(String pLogDir, String pServiceName, Direction pDirection) {
+        this(pLogDir, pServiceName, pDirection, 0L);
     }
 
-    public TxlogReplayer(String pFilenamePattern, int pDirection, long pFromMessageSeqno) {
+    public TxlogReplayer(String pLogDir, String pServiceName, Direction pDirection, long pFromMessageSeqno) {
         this.mFromMessageSeqno = pFromMessageSeqno;
-        this.mFilenamePattern = pFilenamePattern;
+        this.mLogDir = pLogDir;
+        this.mServiceName = pServiceName;
         this.mDirection = pDirection;
-        List<TxLogfile> tTxLogfiles = TxLogger.listPatternTxLogfiles(pFilenamePattern);
+        List<TxLogfile> tTxLogfiles = TxlogAux.listTxlogFiles(mLogDir, mServiceName);
 
         if (tTxLogfiles.size() == 0) {
-            mReplayHandler = null;
+            mReplayer = null;
         } else {
             mLogFilenames = new ArrayList<>();
-            if (pFromMessageSeqno >= 0) {
-                if (pDirection == FORWARD) {
+            if (pFromMessageSeqno > 0) {
+                if (pDirection == Direction.Forward) {
                     for (TxLogfile tTxLogfile : tTxLogfiles) {
                         if (pFromMessageSeqno <= tTxLogfile.getLastSequenceNumber()) {
                             mLogFilenames.add(tTxLogfile.getFullname());
@@ -47,85 +49,87 @@ public class TxlogReplayer {
                     }
                 }
             } else {
-                listLogfiles();
+                for (TxLogfile txlf : tTxLogfiles) {
+                    mLogFilenames.add(txlf.getFullname());
+                }
             }
 
             if (mLogFilenames.size() > 0) {
-                this.mCurrentFileIndex = (mDirection == FORWARD) ? 0 : mLogFilenames.size() - 1;
-                mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, pFromMessageSeqno );
+                this.mCurrentFileIndex = (mDirection == Direction.Forward) ? 0 : mLogFilenames.size() - 1;
+                mReplayer = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, pFromMessageSeqno);
             } else {
-                mReplayHandler = null;
+                mReplayer = null;
             }
-            }
+        }
+    }
+
+    public boolean hasMore() {
+        if (mNextReplayEntry == null) {
+            mNextReplayEntry = next();
+        }
+        return (mNextReplayEntry != null);
     }
 
 
+    public TxlogReplyEntryMessage next() {
 
-    public  TxlogReplayRecord next() {
-        if (mReplayHandler == null) {
-            return null;
+        if (mNextReplayEntry == null) {
+            mNextReplayEntry = (mReplayer == null) ? null : this.nextMessage();
         }
+        TxlogReplyEntryMessage re = mNextReplayEntry;
+        mNextReplayEntry = null;
+        return re;
+    }
 
+
+    TxlogReplyEntryMessage nextMessage() {
         try {
-
-            TxlogReplayRecord tRec = mReplayHandler.nextRecord();
-            if (tRec == null) {
-                if (mDirection == TxlogReplayer.FORWARD) {
+            TxlogReplyEntryMessage tReplayEntry = mReplayer.nextMessage();
+            if (tReplayEntry == null) {
+                if (mDirection == Direction.Forward) {
                     mCurrentFileIndex++;
                     if (mCurrentFileIndex == mLogFilenames.size()) {
                         return null;
                     }
-                    mReplayHandler.close();
-                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
-                }
-                else {
+                    mReplayer.close();
+                    mReplayer = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
+                } else {
                     mCurrentFileIndex--;
                     if (mCurrentFileIndex < 0) {
                         return null;
                     }
-                    mReplayHandler.close();
-                    mReplayHandler = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
+                    mReplayer.close();
+                    mReplayer = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
                 }
-                tRec = mReplayHandler.nextRecord();
+                tReplayEntry = mReplayer.nextMessage();
             }
-            return tRec;
-        }
-        catch( IOException e) {
+            return tReplayEntry;
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     public void close() {
         try {
-            if (mReplayHandler != null) {
-                mReplayHandler.close();
-                mReplayHandler = null;
+            if (mReplayer != null) {
+                mReplayer.close();
+                mReplayer = null;
             }
-        }
-        catch( IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
 
+    private class FileReplayHandler {
+        private RandomAccessFile    mFile;
+        private FileChannel         mFileChannel;
+        private String              mFilename;
+        private Direction           mDirection;
+        private long                mFromMessageSeqno;
+        private long                mCurrtPos;
 
-    private void listLogfiles() {
-        FileUtilParse fnp = new FileUtilParse( this.mFilenamePattern);
-        mLogFilenames = fnp.listWildcardFiles();
-
-    }
-
-    private class FileReplayHandler
-    {
-        private RandomAccessFile mFile;
-        private FileChannel mFileChannel;
-        private String  mFilename;
-        private int mDirection;
-        private long mPos;
-        private long mFromMessageSeqno;
-
-
-        FileReplayHandler( String pFilename, int pDirection, long pMessageSeqno ) {
+        FileReplayHandler(String pFilename, Direction pDirection, long pMessageSeqno) {
             mFromMessageSeqno = pMessageSeqno;
             mFilename = (pFilename == null) ? "null" : pFilename;
             //System.out.println("Replaying file: " + pFilename + " direction: " + ((pDirection == TxlogReplayer.FORWARD) ? "FORWARD" : "BACKWARD") + " from seqno: " + mFromMessageSeqno );
@@ -134,131 +138,121 @@ public class TxlogReplayer {
                     mDirection = pDirection;
                     mFile = new RandomAccessFile(pFilename, "r");
                     mFileChannel = mFile.getChannel();
-                    if (mDirection == TxlogReplayer.BACKWARD) {
-                        alignAtLastRecord();
+                    if (mDirection == Direction.Backward) {
+                        mCurrtPos = TxlogAux.alignToEndOfTxlogFile(mFile); //after last record in file
                     } else {
-                        mPos = 0;
+                        mCurrtPos = 0;
                     }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-            } else {
-
             }
         }
 
-        void close() throws IOException{
+        void close() throws IOException {
             mFile.close();
         }
 
-        private int getTotalRecordSize() throws IOException
-        {
-             int tTotSize = 0;
-             long tPos = mFileChannel.position();
-
-             if (mDirection == TxlogReplayer.FORWARD) {
-                 if (mFileChannel.position() == mFileChannel.size()) {
-                     tTotSize = 0;
-                 } else {
-                     tTotSize = TxLogger.RECORD_HEADER_SIZE + mFile.readInt();
-                 }
-             } else {
-                 if (mFileChannel.position() <= 2 * Integer.BYTES) {
-                     tTotSize = 0;
-                 } else {
-                     mFileChannel.position(tPos - 2 * Integer.BYTES);
-                     tTotSize = TxLogger.RECORD_HEADER_SIZE + mFile.readInt();
-                 }
-             }
-             mFileChannel.position( tPos );
-             return tTotSize;
-        }
-
-
-        private TxlogReplayRecord readTxlRecord() throws IOException {
-
-            // Read message size
-            int tMsgSize1 = mFile.readInt();
-
-            // Read message logging sequence number. If 0 (zero) it is a filler record that should not be replayed
-            long tMsgSeqno = mFile.readLong();
-            if (tMsgSeqno < 0) {
-                throw new IOException("Invalid reply option found in file\"" + mFilename + " at position " + mPos);
-            }
-
-            byte[] tMsgData = new byte[tMsgSize1];
-            mFile.read( tMsgData );
-
-            int tMsgSize2 = mFile.readInt();
-            if (tMsgSize1 != tMsgSize2) {
-                throw new IOException("Invalid size, size1 <> size2 file\"" + mFilename + " size1 = " + tMsgSize1 + " size2 = " + tMsgSize2);
-            }
-
-            int tMagicEnd = mFile.readInt();
-            if (tMagicEnd != TxLogger.MAGIC_END) {
-                throw new IOException("END Markee not found in file\"" + mFilename + " at position " + mPos);
-            }
-
-            return new TxlogReplayRecord( tMsgData, mFilename, tMsgSeqno);
-        }
-
-
-        private TxlogReplayRecord nextRecord() throws IOException {
-
-            TxlogReplayRecord txlrec = null;
-
-            while( true ) {
-                int tTotRecSize = getTotalRecordSize();
-
-                if (mDirection == TxlogReplayer.BACKWARD) {
-                    if (mPos <= 0) { // At the beginning of the file, no more data available in this file
+        TxlogReplyEntryMessage nextMessage() {
+            try {
+                TxlogReplyEntryInterface tReplayEntry;
+                do {
+                    long tTotalRecordSize = getTotalRecordSize();
+                    if (tTotalRecordSize == 0L) {
                         return null;
                     }
-
-                    // Backup the file pointer to the begining of the record to be read
-                    mPos -= tTotRecSize;
-                    mFileChannel.position(mPos);
-
-                    // Read the record, which will move the filepointer forward
-                    txlrec = readTxlRecord();
-                    // Backup the pointer to ahead of the read record
-                    mFileChannel.position(mPos);
-                } else {
-                    if (mPos + tTotRecSize >= mFileChannel.size()) { // Passing the end of the file
-                        return null;
+                    if (mDirection == Direction.Backward) {
+                        mFileChannel.position( mCurrtPos - tTotalRecordSize);
+                        tReplayEntry = nextMessageFromFile();
+                        mCurrtPos -= tTotalRecordSize;
+                    } else {
+                         mFileChannel.position( mCurrtPos );
+                         tReplayEntry = nextMessageFromFile();
+                         mCurrtPos += tTotalRecordSize;
                     }
-                    txlrec = readTxlRecord();
-                    mPos += tTotRecSize;
-                }
-
-                if (!txlrec.isIgnored() &&
-                        (  (mFromMessageSeqno == -1) ||
-                           ((mDirection == FORWARD) && (mFromMessageSeqno <= txlrec.getMsgSeqno())) ||
-                           ((mDirection == BACKWARD) && (txlrec.getMsgSeqno() <= mFromMessageSeqno))
-                        )
-                    )
-                {
-                    return txlrec;
-                }
+                } while( tReplayEntry.getType() != WriteBuffer.FLAG_USER_PAYLOAD);
+                return (TxlogReplyEntryMessage) tReplayEntry;
+            }
+            catch( IOException e) {
+                throw new RuntimeException(e);
             }
         }
 
+        private long getTotalRecordSize() throws IOException {
+            if (mDirection == Direction.Forward) {
+                if ((mCurrtPos + WriteBuffer.TXLOG_PRE_HEADER_SIZE) > mFileChannel.size()) {
+                    return 0L;
+                }
+                mFileChannel.position(mCurrtPos + Integer.BYTES);
+                int tSize = (mFile.readInt() & WriteBuffer.PAYLOAD_LENGTH_MASK);
+                if ((mCurrtPos + tSize) > mFileChannel.size()) {
+                    return 0L;
+                }
+                return tSize + WriteBuffer.TXLOG_HEADER_SIZE;
+            } else { // Backward
+                if ((mCurrtPos - WriteBuffer.TXLOG_POST_HEADER_SIZE) < 0) {
+                    return 0L;
+                }
+                mFileChannel.position(mCurrtPos -  WriteBuffer.TXLOG_POST_HEADER_SIZE);
+                int tSize = (mFile.readInt() & WriteBuffer.PAYLOAD_LENGTH_MASK);
+                if ((mCurrtPos - tSize) < 0) {
+                    return 0L;
+                }
+                return tSize + WriteBuffer.TXLOG_HEADER_SIZE;
+            }
+        }
 
-        private void alignAtLastRecord() throws IOException {
-            mPos = mFileChannel.size();
-            mPos -= 4; // backup 4 bytes
-            mFileChannel.position(mPos);
+        private TxlogReplyEntryInterface nextMessageFromFile() throws IOException {
+                if ((mFileChannel.position() + WriteBuffer.TXLOG_HEADER_SIZE) > mFileChannel.size()) {
+                    return null; // EOF nothing more to read
+                }
+                int tMark = mFile.readInt();
+                if (tMark != WriteBuffer.MAGIC_START_MARKER) {
+                    throw new IOException("Invalid Start Marker found");
+                }
+                int tTypeAndLength1 = mFile.readInt();
+                int tSize = (tTypeAndLength1 & WriteBuffer.PAYLOAD_LENGTH_MASK);
+                int tType = (tTypeAndLength1 & WriteBuffer.REC_TYPE_MASK);
 
-            while(mPos > 0) {
-                mFileChannel.position(mPos);
-                if (mFile.readInt() == TxLogger.MAGIC_END) {
-                    mPos += 4;
-                    return;
+                //long  tFs  = mFileChannel.size();
+                //long  tFp = mFileChannel.position();
+                //long x = tFp + tSize + WriteBuffer.TXLOG_POST_HEADER_SIZE + Long.BYTES;
+                if ((mFileChannel.position() + tSize + WriteBuffer.TXLOG_POST_HEADER_SIZE) > mFileChannel.size()) {
+                    System.out.println("Warning: truncated record at end of file");
+                    return null; // EOF nothing more to read
+                }
+
+
+                TxlogReplyEntryInterface tReplyEntry;
+
+                if (tType == WriteBuffer.FLAG_PADDING_PAYLOAD) {
+                    mFileChannel.position(mFileChannel.position() + tSize);
+                    tReplyEntry = new TxlogReplyEntryFiller(tSize);
+                } else if (tType == WriteBuffer.FLAG_USER_PAYLOAD) {
+                    long tMsgSeqno  = mFile.readLong();
+                    byte[] tPayload = new byte[tSize - Long.BYTES];
+                    mFile.readFully(tPayload);
+                    tReplyEntry = new TxlogReplyEntryMessage(tPayload, tMsgSeqno, this.mFilename);
                 } else {
-                    mPos -= 1; // Backup one byte
+                    byte[] tPayload = new byte[tSize];
+                    mFile.readFully(tPayload);
+                    tReplyEntry =  new TxlogReplyEntryStatistics(tPayload);
                 }
-            }
-            System.out.println("error: could not found last record in the replay file \"" + mFilename + "\"");
+
+                int tTypeAndLength2 = mFile.readInt();
+                if (tTypeAndLength2 != tTypeAndLength1) {
+                 throw new IOException("Invalid size/type in pre/post header");
+    }
+                tMark = mFile.readInt();
+                if (tMark != WriteBuffer.MAGIC_END_MARKER) {
+                    throw new IOException("Invalid End Marker found");
+                }
+                return tReplyEntry;
+
         }
+
+
     }
 }
+
+

@@ -1,5 +1,6 @@
 package com.hoddmimes.txtest.aux.txlogger;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
@@ -9,51 +10,40 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TxlogWriter
 {
-    private TxLogger mTxLogger;
+
+    private String      mTxLogDir;
+    private String      mTxLogServiceName;
+    private TxlogConfig mConfiguration;
+
+
     private LinkedBlockingQueue<MsgQueItem> mQueue;
     private RandomAccessFile mFile;
     private FileChannel mFileChannel;
-    private int mLogfileSeqno = 0;
     private LogWriter mLogWriter;
     private ExecutorService mLogThread = Executors.newSingleThreadExecutor();
+    private AtomicLong mTxlogFileMessageSeqno;
+    private int mLastWriteTimeUsec = 0;
 
 
+    public TxlogWriter(String pTxLogDir, String pTxLogServiceName, TxlogConfig pConfiguration) {
+        mTxLogDir = pTxLogDir;
+        mTxLogServiceName = pTxLogServiceName;
+        mConfiguration = pConfiguration;
+        mTxlogFileMessageSeqno = new AtomicLong( TxlogAux.getMessageSeqnoInTxlog(mTxLogDir, mTxLogServiceName));
 
-    public TxlogWriter(TxLogger pTxLogger ) {
-        mTxLogger = pTxLogger;
         mQueue = new LinkedBlockingQueue<>();
         mFile = null;
-        mLogfileSeqno = findLogfileSeqno();
         mLogWriter = new LogWriter();
         mLogThread.execute( mLogWriter );
     }
 
     public long getMessageSeqno() {
-        return mTxLogger.getServerMessageSeqno();
+       return mTxlogFileMessageSeqno.get();
     }
-
-    private int findLogfileSeqno() {
-        List<TxLogfile> txlf = TxLogger.listPatternTxLogfiles(mTxLogger.getLogFilePattern());
-        if ((txlf == null) || (txlf.size() == 0)) {
-            return 0;
-        } else {
-            FileUtilParse fnp = new FileUtilParse(mTxLogger.getLogFilePattern());
-            String tPrefix = fnp.getName().substring(0, fnp.getName().length() - TxLogger.SEQUENCE_SEQUENCE.length());
-            Pattern tPattern = Pattern.compile(tPrefix + "(\\d+)\\." + fnp.getExtention());
-            Matcher m = tPattern.matcher(txlf.get( txlf.size() - 1).getFullname());
-            if (m.find()) {
-                return Integer.parseInt(m.group(1));
-            } else {
-                return 0;
-            }
-        }
-    }
-
 
 
     public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno ) {
@@ -72,13 +62,11 @@ public class TxlogWriter
     }
 
     public synchronized long queueMessage( byte[] pMessage, TxlogWriteCallback pCallback, Object pParameter ) {
-        long tSeqno = mTxLogger.incrementAndGetServerMessageSeqno();
+        long tSeqno = mTxlogFileMessageSeqno.incrementAndGet();
         MsgQueItem queitm = new MsgQueItem(pMessage, pCallback, pParameter,tSeqno);
         this.mQueue.add(queitm);
         return tSeqno;
     }
-
-
 
 
     private void createNewRandomAccessFile() {
@@ -97,23 +85,15 @@ public class TxlogWriter
     }
 
     private String getFilename() {
-        SimpleDateFormat sdf = new SimpleDateFormat("yyMMdd_HHmmss_SSS");
-        if (mTxLogger.mConfigLogFilePattern.contains("#datetime#")) {
-            return mTxLogger.mConfigLogFilePattern.replace("#datetime#", sdf.format(System.currentTimeMillis()));
-        } else if (mTxLogger.mConfigLogFilePattern.contains(TxLogger.SEQUENCE_SEQUENCE)) {
-            // "foobar_#sequence#".log"
-            FileUtilParse fnp = new FileUtilParse(mTxLogger.mConfigLogFilePattern);
-            String tFilename = fnp.getDir() + fnp.getName().substring(0, fnp.getName().length() - TxLogger.SEQUENCE_SEQUENCE.length()) + String.valueOf(++mLogfileSeqno) + "." + fnp.getExtention();
-            return tFilename;
-        } else {
-            throw new RuntimeException("Invalid logfilename pattern");
-        }
+        SimpleDateFormat sdf = new SimpleDateFormat("yyMMdd_HHmmssSSS");
+        String tDir = (mTxLogDir.endsWith(File.separator)) ? (mTxLogDir + "/") : mTxLogDir;
+        return tDir + mTxLogServiceName + "-" + sdf.format(System.currentTimeMillis()) + ".txl";
     }
 
     class LogWriter implements Runnable
     {
-        List<MsgQueItem> tMsgList = new ArrayList<>(30);
-        WriteBuffer wrtBuffer = new WriteBuffer(mTxLogger.mConfigBufferSize,mTxLogger.mConfigAlignSize, false);
+        List<MsgQueItem> tMsgList = new ArrayList<>(mConfiguration.getWriteQueueDrainSize());
+        WriteBuffer wrtBuffer = new WriteBuffer(mConfiguration.getWriteBufferSize(),mConfiguration.getWriteBufferAlignSize(), false);
         MsgQueItem msgitm;
 
         public LogWriter()
@@ -144,28 +124,28 @@ public class TxlogWriter
         }
 
         private void msgToBuffer( MsgQueItem pMsgItm ) {
-            if (wrtBuffer.doesMsgFit(pMsgItm.mMsg)) {
+            if (wrtBuffer.willDataFitInBuffer(pMsgItm.mMsg.length)) {
                 // Message fits into the current buffer
-                wrtBuffer.put(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
             // Current buffer will not fit the message, write current buffer to file
             // if the buffer holds any messages
-            if (wrtBuffer.getPosition() > 0) {
+            if (!wrtBuffer.isEmpty()) {
                 writeBufferToFile( wrtBuffer );
             }
 
             // Will the message now fit into the (empty) write buffer  ?
-            if (wrtBuffer.doesMsgFit(pMsgItm.mMsg)) {
-                wrtBuffer.put(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+            if (wrtBuffer.willDataFitInBuffer(pMsgItm.mMsg.length)) {
+                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
             // The message is larger than the default write buffer. A temporary larger buffer
             // is allocated to fit the message
-            WriteBuffer tmpBuffer = new WriteBuffer(pMsgItm.totalMsgSize(), mTxLogger.mConfigAlignSize, true);
-                tmpBuffer.put(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+            WriteBuffer tmpBuffer = new WriteBuffer(pMsgItm.totalMsgSize(), mConfiguration.getWriteBufferAlignSize(), true);
+                tmpBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 writeBufferToFile( tmpBuffer );
                 tmpBuffer = null;
             }
@@ -186,24 +166,29 @@ public class TxlogWriter
         }
 
         private void writeBufferToFile( WriteBuffer pBuffer ) {
-            if (pBuffer.getPosition() == 0) {
+            if (pBuffer.isEmpty()) {
                 return;
             }
 
             try {
-                if ((mFileChannel == null) || (mFileChannel.position() >= mTxLogger.mConfigMaxFileSize)) {
+                if ((mFileChannel == null) || (mFileChannel.position() >= mConfiguration.getLogfileMaxSize())) {
                     openNewFile();
                 }
-                //System.out.println("pre-write buffer: " + pBuffer.getPosition());
-                pBuffer.align();
-                //System.out.println("align buffer: " + pBuffer.getPosition());
-                pBuffer.flip();
-                mFileChannel.write( pBuffer.getBuffer());
+
+                pBuffer.setWriteStatistics( mLastWriteTimeUsec );
+                long tStartTime = System.currentTimeMillis();
+                mFileChannel.write(pBuffer.getBuffer());
                 mFileChannel.force(true);
+                mLastWriteTimeUsec = (int) ((System.currentTimeMillis() - tStartTime) / 1000L);
+
 
                 pBuffer.executeCallbacks();
                 //System.out.println("write buffer: " + pBuffer.getPosition());
-                pBuffer.clear();
+                if (!pBuffer.isTempBuffer()) {
+                    pBuffer.reset();
+                } else {
+                    pBuffer = null;
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -220,7 +205,7 @@ public class TxlogWriter
         }
 
         int totalMsgSize() {
-            return TxLogger.RECORD_HEADER_SIZE + mMsg.length;
+            return WriteBuffer.TXLOG_HEADER_SIZE + mMsg.length + Long.BYTES;
         }
 
         byte[]              mMsg;

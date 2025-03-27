@@ -23,6 +23,7 @@ public class IpcController extends Thread implements IpcCallbacks
     private IPCFactory          mIPCFactory;
 
 
+
     public IpcController(int pNodeId, JsonObject pConfiguration ) {
         mConnections = new java.util.ArrayList<>();
         mCallbacksListiners = new ArrayList<>();

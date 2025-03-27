@@ -11,9 +11,7 @@ import com.hoddmimes.txtest.aux.ipc.IpcCallbacks;
 import com.hoddmimes.txtest.aux.ipc.IpcCntx;
 import com.hoddmimes.txtest.aux.ipc.IpcController;
 import com.hoddmimes.txtest.aux.ipc.IpcNode;
-import com.hoddmimes.txtest.aux.txlogger.TxLogger;
-import com.hoddmimes.txtest.aux.txlogger.TxlogReplayRecord;
-import com.hoddmimes.txtest.aux.txlogger.TxlogReplayer;
+import com.hoddmimes.txtest.aux.txlogger.*;
 import com.hoddmimes.txtest.generated.fe.messages.FEFactory;
 import com.hoddmimes.txtest.generated.fe.messages.RequestMessage;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
@@ -30,20 +28,22 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoInterface
+public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoInterface, TxServerIf
 {
+
     private enum ServerState {Recovery, Synchronizing, Synchronized};
 
     private Logger mLogger = LogManager.getLogger(TxServer.class);
-    private JsonObject mConfiguration;
+    private JsonObject jConfiguration;
     private String mConfigFilename = "./TxServer.json"; // Default configuration
     private int mNodeId = 0;
+    private String mServiceName;
     TxExecutor mTxExecutor;
     FEController mFEController;
     QuorumStateController mQSController;
     AssetController mAssetController;
     IpcController mIpcController;
-    TxLogger mTxLogger;
+    TxlogWriter mTxlogWriter;
     Map<Integer, PrimaryRecoveryHandle> mRecoveryHandles;
     private AtomicReference<ServerState> mServerState= new AtomicReference(ServerState.Recovery);
     private Object mBusinessMutext = new Object();
@@ -76,21 +76,24 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
         loadConfiguration();
 
         // Enable or disable transaction timestamp tracing
-       if (!mConfiguration.get("timestamps").getAsBoolean()) {
+       if (!jConfiguration.get("timestamps").getAsBoolean()) {
            AuxTimestamp.disable();
        }
 
-        mTxPrintCount = mConfiguration.get("tx_stat_print_interval_tx_count").getAsLong();
+        mServiceName = jConfiguration.get("service").getAsJsonObject().get("name").getAsString();
+        JsonObject jTxLoggerConfig = jConfiguration.get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
+        mTxlogWriter = TxLogger.getWriter( "./" + String.format("%02d",mNodeId) + "/", mServiceName, jTxLoggerConfig);
+
+        mTxPrintCount = jConfiguration.get("tx_stat_print_interval_tx_count").getAsLong();
+        mServiceName = jConfiguration.get("service").getAsJsonObject().get("name").getAsString();
 
        // Initialize the TX logger
-        mTxLogger = new TxLogger(mConfiguration.get("service").getAsJsonObject().get("tx_logging").getAsJsonObject());
-        mLogger.info("Server message sequence number is set to " + mTxLogger.getServerMessageSeqno());
         mRecoveryHandles = Collections.synchronizedMap(new HashMap<>());
 
         createAndStartExecutor();
-        mIpcController = new IpcController( mNodeId, mConfiguration );
+        mIpcController = new IpcController( mNodeId, jConfiguration);
         mIpcController.addIpcCallback(this);
-        mQSController = new QuorumStateController(mNodeId, mConfiguration, mIpcController, mTxLogger);
+        mQSController = new QuorumStateController(this);
         mQSController.syncStateWithQuorumServer(); // Wait for getting a role from quorum serve
         creatAndStartAssetController();
 
@@ -189,7 +192,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
         StandbyRecoveryRequest tToPrimaryRecoveryRequest = (StandbyRecoveryRequest) pIpcCntxRequest.getMessage();
 
         if (tToPrimaryRecoveryRequest.getHandleId() == 0) {
-            tRecoveryHandle = new PrimaryRecoveryHandle(mTxLogger);
+            tRecoveryHandle = new PrimaryRecoveryHandle(this);
             mRecoveryHandles.put(tRecoveryHandle.getId(), tRecoveryHandle);
 
         } else {
@@ -226,21 +229,13 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
         long tLastKnownSeqno = 0;
 
         FEFactory tMsgFactory = new FEFactory();
-        String tTxLogfilePattern = mTxLogger.getLogFilePattern();
 
-        if (tTxLogfilePattern.contains(TxLogger.SEQUENCE_DATETIME)) {
-            tTxLogfilePattern = tTxLogfilePattern.replace(TxLogger.SEQUENCE_DATETIME, "*");
-        } else {
-            tTxLogfilePattern = tTxLogfilePattern.replace(TxLogger.SEQUENCE_SEQUENCE, "*");
-        }
-        TxlogReplayer tReplayer = mTxLogger.getReplayer(tTxLogfilePattern, TxlogReplayer.FORWARD);
-        while( true ) {
-            TxlogReplayRecord tRec = tReplayer.next();
-            if (tRec == null) {break;}
-
-            tLastKnownSeqno = tRec.getMsgSeqno();
+        TxlogReplayer tReplayer = TxLogger.getReplayer( "./" + String.format("%02d", this.mNodeId) + "/", mServiceName, TxlogReplayer.Direction.Forward);
+        while( tReplayer.hasMore() ) {
+            TxlogReplyEntryMessage tMsgRec = tReplayer.next();
+            tLastKnownSeqno = tMsgRec.getMessageSeqno();
             tRecordsReplayed++;
-            MessageInterface tMsg = tMsgFactory.createMessage(tRec.getData());
+            MessageInterface tMsg = tMsgFactory.createMessage(tMsgRec.getMessageData());
             TxCntx txCntx = new TxCntx(tMsg);
             processClientMessage( txCntx );
         }
@@ -249,12 +244,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
     }
 
     private void creatAndStartAssetController() {
-        mAssetController = new AssetController( mConfiguration, mQSController, mIpcController, mTxLogger );
-    }
-
-    @Override
-    public long getServerMessageSeqno() {
-        return mAssetController.getServerMessageSeqno();
+        mAssetController = new AssetController(this );
     }
 
     private void createAndStartFE() {
@@ -264,7 +254,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
     }
 
     private void createAndStartExecutor() {
-        int tThreadCount = mConfiguration.get( "executor_threads" ).getAsInt();
+        int tThreadCount = jConfiguration.get( "executor_threads" ).getAsInt();
         mTxExecutor = new TxExecutor( this, tThreadCount );
     }
 
@@ -286,7 +276,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
     }
 
     private JsonObject getNodeConfiguration( int pNodeId ) {
-        JsonArray jNodes = mConfiguration.get( "nodes" ).getAsJsonArray();
+        JsonArray jNodes = jConfiguration.get( "nodes" ).getAsJsonArray();
         for (int i = 0; i < jNodes.size(); i++) {
             JsonObject jNode = jNodes.get(i).getAsJsonObject();
             if (jNode.get( "node_id" ).getAsInt() == pNodeId) {
@@ -299,7 +289,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
 
     private void loadConfiguration() {
         try {
-            mConfiguration = JsonParser.parseReader( new FileReader( mConfigFilename ) ).getAsJsonObject();
+            jConfiguration = JsonParser.parseReader( new FileReader( mConfigFilename ) ).getAsJsonObject();
         } catch( Exception e ) {
             mLogger.error( "Unable to load configuration file: " + mConfigFilename );
             System.exit( 1 );
@@ -319,9 +309,9 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
                     pTxCntx.addTimestamp("queue message to tx logger");
                     if (!pTxCntx.isPrimaryTx()) {
                         tMessageSeqno = pTxCntx.getMessageSequenceNumber(); // If being in stdby mode use the message sequence number from primary
-                        mTxLogger.getWriter().queueMessage(updmsg.messageToBytes(), tMessageSeqno); // queue the message to the tx logger
+                        mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno); // queue the message to the tx logger
                     } else {
-                        tMessageSeqno = mTxLogger.getWriter().queueMessage(updmsg.messageToBytes()); // get an incremented message sequence number when being in primary mode
+                        tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes()); // get an incremented message sequence number when being in primary mode
                         pTxCntx.setMessageSequenceNumber(tMessageSeqno);
                     }
 
@@ -418,4 +408,50 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
     public void onDisconnect(IpcNode pIpcNode, boolean pHardDisconnect) {
         // No action by design
     }
+
+
+    @Override
+    public int getNodeId() {
+        return this.mNodeId;
+    }
+
+    @Override
+    public String getServiceName() {
+        return this.mServiceName;
+    }
+
+    @Override
+    public JsonObject getTxlogConfiguration() {
+        return jConfiguration.get( "service" ).getAsJsonObject().get("tx_logging").getAsJsonObject();
+    }
+
+    @Override
+    public IpcController getIpcController() {
+        return mIpcController;
+    }
+
+    @Override
+    public JsonObject getConfiguration() {
+        return jConfiguration;
+    }
+
+    @Override
+    public ServerMessageSeqnoInterface getMessageSequenceNumberIf() {
+        return this;
+    }
+
+
+    @Override
+    public QuorumStateController getQSController() {
+        return mQSController;
+    }
+
+    @Override
+    public long getServerMessageSeqno() {
+        return mTxlogWriter.getMessageSeqno();
+    }
+
+
+
+
 }

@@ -1,8 +1,5 @@
 import com.google.gson.JsonObject;
-import com.hoddmimes.txtest.aux.txlogger.TxLogfile;
-import com.hoddmimes.txtest.aux.txlogger.TxLogger;
-import com.hoddmimes.txtest.aux.txlogger.TxlogReplayRecord;
-import com.hoddmimes.txtest.aux.txlogger.TxlogReplayer;
+import com.hoddmimes.txtest.aux.txlogger.*;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
 import com.hoddmimes.txtest.server.Asset;
 
@@ -37,22 +34,13 @@ public class TestTxlogRebuild {
         }
     }
 
-    private JsonObject createConfiguration(String pLogfilePattern) {
-        JsonObject jConfig = new JsonObject();
-        jConfig.addProperty("max_file_size", 100 * 1000 * 1000);
-        jConfig.addProperty("log_files", pLogfilePattern);
-        jConfig.addProperty("write_align_size", 512);
-        jConfig.addProperty("write_buffer_size", 8192 * 3);
-        jConfig.addProperty("write_holdback", 30);
-        return jConfig;
-    }
 
     private void test() {
-        Replayer replayer1 = new Replayer(createConfiguration(mLogfilePattern01), TxlogReplayer.FORWARD, 0);
-        Replayer replayer2 = new Replayer(createConfiguration(mLogfilePattern02), TxlogReplayer.FORWARD, 0);
+        Replayer replayer1 = new Replayer("./01", "tx-test", TxlogReplayer.Direction.Forward, 0);
+        Replayer replayer2 = new Replayer("./02", "tx-test", TxlogReplayer.Direction.Forward, 0);
 
-        List<TxLogfile> txl_files1 = replayer1.getLogFiles();
-        List<TxLogfile> txl_files2 = replayer2.getLogFiles();
+        List<TxLogfile> txl_files1 = TxlogAux.listTxlogFiles("./01", "tx-test");
+        List<TxLogfile> txl_files2 = TxlogAux.listTxlogFiles("./02", "tx-test");
 
         if (txl_files1.size() != txl_files2.size()) {
             System.out.println("Number of logfiles are different " + mLogfilePattern01 + " : " + txl_files1.size() + "   " + mLogfilePattern02 + " : " + txl_files2.size());
@@ -63,7 +51,7 @@ public class TestTxlogRebuild {
             TxLogfile f1 = txl_files1.get(i);
             TxLogfile f2 = txl_files2.get(i);
 
-            if (f1.compare(f1, f2) != 0) {
+            if (f1.compareTo(f2) != 0) {
                 System.out.println("Warning!!! Logfiles " + i + " are different.\n " + f1.toString() + "\n" + f2.toString());
             }
         }
@@ -74,13 +62,13 @@ public class TestTxlogRebuild {
 
 
         System.out.println("Starting to compare contents...");
-        TxlogReplayer txlr1 = new TxlogReplayer(mLogfilePattern01, TxlogReplayer.FORWARD, 0);
-        TxlogReplayer txlr2 = new TxlogReplayer(mLogfilePattern02, TxlogReplayer.FORWARD, 0);
+        TxlogReplayer txlr1 = TxLogger.getReplayer("./01/", "tx-test", TxlogReplayer.Direction.Forward, 0);
+        TxlogReplayer txlr2 =  TxLogger.getReplayer("./02/", "tx-test", TxlogReplayer.Direction.Forward, 0);
 
 
         while (true) {
-            TxlogReplayRecord r1 = txlr1.next();
-            TxlogReplayRecord r2 = txlr2.next();
+            TxlogReplyEntryMessage r1 = txlr1.next();
+            TxlogReplyEntryMessage r2 = txlr2.next();
 
             if (r1 == null && r2 == null) {
                 System.out.println("End of replay.");
@@ -96,12 +84,12 @@ public class TestTxlogRebuild {
             }
 
 
-            UpdateMessage updmsg1 = new UpdateMessage(r1.getData());
-            UpdateMessage updmsg2 = new UpdateMessage(r2.getData());
+            UpdateMessage updmsg1 = new UpdateMessage(r1.getMessageData());
+            UpdateMessage updmsg2 = new UpdateMessage(r2.getMessageData());
 
             if (updmsg1.getValue() != updmsg2.getValue()) {
-                System.out.println("Mismatch 01-seqnumber: " + r1.getMsgSeqno() + " 02-seqnumber: " + r2.getMsgSeqno() + "\n" +
-                        r1.getFilename() + "   " + r2.getFilename());
+                System.out.println("Mismatch 01-seqnumber: " + r1.getMessageSeqno() + " 02-seqnumber: " + r2.getMessageSeqno() + "\n" +
+                        r1.getmFilename() + "   " + r2.getmFilename());
             }
 
         }
@@ -116,28 +104,19 @@ public class TestTxlogRebuild {
         private AssetController assetController;
 
 
-        Replayer(JsonObject jConfig, int pDirection, long pFromSeqno) {
-            this.jConfiguration = jConfig;
-            txl = new TxLogger(jConfiguration);
+        Replayer(String pLogDir, String pServicename,TxlogReplayer.Direction pDirection, long pFromSeqno) {
             assetController = new AssetController();
-            txlogReplayer = txl.getReplayer(jConfiguration.get("log_files").getAsString(), pDirection, pFromSeqno);
-        }
-
-
-        List<TxLogfile> getLogFiles() {
-            List<TxLogfile> txl_files = TxLogger.listPatternTxLogfiles(jConfiguration.get("log_files").getAsString());
-            return txl_files;
+            txlogReplayer = TxLogger.getReplayer(pLogDir,  pServicename, pDirection, pFromSeqno);
         }
 
         void rebuild() {
-            TxlogReplayRecord txlr;
-            do {
-                txlr = txlogReplayer.next();
-                if (txlr != null) {
-                    UpdateMessage updmsg = new UpdateMessage(txlr.getData());
+            while( txlogReplayer.hasMore()) {
+                TxlogReplyEntryMessage tlrm = txlogReplayer.next();
+                if (tlrm != null) {
+                    UpdateMessage updmsg = new UpdateMessage(tlrm.getMessageData());
                     assetController.update(updmsg);
                 }
-            } while (txlr != null);
+            }
         }
 
         public String toString() {

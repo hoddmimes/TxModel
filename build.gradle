@@ -63,6 +63,7 @@ build.finalizedBy(buildTxTestJar)
 
 dependencies {
     implementation fileTree(dir: './libs', include: 'MessageCompiler-1.6.jar')
+    implementation group: 'org.hdrhistogram', name: 'HdrHistogram', version: '2.2.2'
     implementation group: 'commons-io', name: 'commons-io', version: '2.18.0'
     implementation group: 'com.google.code.gson', name: 'gson', version: '2.12.1'
     implementation group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.24.3'

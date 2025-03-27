@@ -1,8 +1,8 @@
 package com.hoddmimes.txtest.server;
 
 import com.hoddmimes.txtest.aux.txlogger.TxLogger;
-import com.hoddmimes.txtest.aux.txlogger.TxlogReplayRecord;
 import com.hoddmimes.txtest.aux.txlogger.TxlogReplayer;
+import com.hoddmimes.txtest.aux.txlogger.TxlogReplyEntryMessage;
 import com.hoddmimes.txtest.generated.ipc.messages.RecoveryData;
 import com.hoddmimes.txtest.generated.ipc.messages.StandbyRecoveryRequest;
 import com.hoddmimes.txtest.generated.ipc.messages.StandbyRecoveryResponse;
@@ -16,13 +16,18 @@ public class PrimaryRecoveryHandle
     private static final Logger mLogger = LogManager.getLogger(PrimaryRecoveryHandle.class);
     private TxlogReplayer txlogReplayer = null;
     private final int mId;
-    private final TxLogger txLogger;
+    private final String mLogDir;
+    private final String mServiceName;
 
 
-    PrimaryRecoveryHandle(TxLogger pTxLogger) {
+
+
+    PrimaryRecoveryHandle(TxServerIf pTxServerIf) {
         synchronized (this) {
             mId = IdIndex++;
-            txLogger = pTxLogger;
+            mServiceName = pTxServerIf.getServiceName();
+            mLogDir = "./" + String.format("%02d",pTxServerIf.getNodeId()) + "/";
+
         }
     }
 
@@ -40,31 +45,31 @@ public class PrimaryRecoveryHandle
         int tDataSize = 0;
 
         if (txlogReplayer == null) {
-            txlogReplayer = txLogger.getReplayer(txLogger.getLogFilePattern(), TxlogReplayer.FORWARD, tSeqno);
+            txlogReplayer = TxLogger.getReplayer( mLogDir, mServiceName, TxlogReplayer.Direction.Forward, tSeqno);
         }
 
         StandbyRecoveryResponse tResponseToStandby = new StandbyRecoveryResponse();
         tResponseToStandby.setHandleId(mId);
 
         do {
-            TxlogReplayRecord txl = txlogReplayer.next();
+            TxlogReplyEntryMessage txl = txlogReplayer.next();
             // End of data, then all is done
             if (txl == null) {
                 eod = true;
                 break;
             }
-            if (txl.getMsgSeqno() != tSeqno) {
-                throw new RuntimeException("Recovery message seqno is out of phase, expected: " + tSeqno + " got: " + txl.getMsgSeqno());
+            if (txl.getMessageSeqno() != tSeqno) {
+                throw new RuntimeException("Recovery message seqno is out of phase, expected: " + tSeqno + " got: " + txl.getMessageSeqno());
             } else {
                 tSeqno++;
             }
 
-            byte[] tData = txl.getData();
+            byte[] tData = txl.getMessageData();
 
             tDataSize += tData.length + 14;
             RecoveryData tRecoveryData = new RecoveryData();
             tRecoveryData.setData( tData );
-            tRecoveryData.setMsgSeqno( txl.getMsgSeqno());
+            tRecoveryData.setMsgSeqno( txl.getMessageSeqno());
             tResponseToStandby.addMessageDataToArray(tRecoveryData);
             if (tDataSize >= MAX_RESPONSE_SIZE) {
                 break;

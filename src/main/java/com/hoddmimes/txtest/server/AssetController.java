@@ -30,18 +30,19 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
 
     private LinkedBlockingQueue<TxCntx> mStdbySendQueue;
     private int mExecChannels;
-    public AssetController(JsonObject jConfiguration, QuorumStateController pQSController, IpcController pIPC, TxLogger pTxLogger) {
-        qsController = pQSController;
-        ipcController = pIPC;
+    public AssetController(TxServerIf pTxServerIf) {
+        qsController = pTxServerIf.getQSController();
+        ipcController = pTxServerIf.getIpcController();
         mWaitingTxCntx = new WaitingTxCntx();
-        mExecChannels = jConfiguration.get( "executor_threads" ).getAsInt();
+        mExecChannels = pTxServerIf.getConfiguration().get( "executor_threads" ).getAsInt();
         mStdbySendQueue = new LinkedBlockingQueue<>();
 
-        int tNumberOfAssets = jConfiguration.get("number_of_assets").getAsInt();
+        int tNumberOfAssets = pTxServerIf.getConfiguration().get("number_of_assets").getAsInt();
 
-        JsonObject jTxLoggerConfig = jConfiguration.get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
-        txLogger = pTxLogger;
-        txWriter = txLogger.getWriter();
+        JsonObject jTxLoggerConfig = pTxServerIf.getConfiguration().get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
+        txWriter = TxLogger.getWriter( "./" + String.format("%02d",pTxServerIf.getNodeId()) + "/",
+                                     pTxServerIf.getServiceName(),
+                                     jTxLoggerConfig);
 
         mAssetMap = new HashMap<>();
         for (int i = 0; i < tNumberOfAssets; i++) {

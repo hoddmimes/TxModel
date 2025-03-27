@@ -5,86 +5,80 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
-import java.util.Comparator;
 
-public class TxLogfile implements Comparator<TxLogfile>
-{
-   private String   mFullname;
-   private long     mLastmodified;
-   private long     mSize;
-   private long     mFirstSequenceNumber;
-   private long     mLastSequenceNumber;
+public class TxLogfile implements Comparable<TxLogfile> {
+    private String mFullname;
+    private long mLastmodified;
+    private long mSize;
+    private long mFirstSequenceNumber;
+    private long mLastSequenceNumber;
 
-   private RandomAccessFile mRandomAccessFile;
-   private FileChannel mFileChannel;
+    private RandomAccessFile mRandomAccessFile;
+    private FileChannel mFileChannel;
 
-   TxLogfile( String pLogfileFullname ) {
-       mFullname = pLogfileFullname;
-       getFileData();
-   }
+    TxLogfile(String pLogfileFullname) {
+        mFullname = pLogfileFullname;
+        getFileData();
+    }
 
-   private void getFileData() {
-       File tFile = new File(mFullname );
-       mLastmodified = tFile.lastModified();
-       try {
-           mRandomAccessFile = new RandomAccessFile(tFile, "r");
-           mFileChannel = mRandomAccessFile.getChannel();
-           mSize = mFileChannel.size();
-           mFirstSequenceNumber = getFirstSeqno();
-           mLastSequenceNumber = getLastSeqno();
-           mFileChannel.close();
-           mRandomAccessFile.close();
-       } catch (IOException e) {
-           throw new RuntimeException(e);
-       }
-   }
+    private void getFileData() {
+        File tFile = new File(mFullname);
+        mLastmodified = tFile.lastModified();
+        try {
+            mRandomAccessFile = new RandomAccessFile(tFile, "r");
+            mFileChannel = mRandomAccessFile.getChannel();
+            mSize = mFileChannel.size();
+            mFirstSequenceNumber = getFirstSeqno();
+            mLastSequenceNumber = getLastSeqno();
+            mFileChannel.close();
+            mRandomAccessFile.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-   private long getFirstSeqno() throws IOException {
-       if (mSize < TxLogger.RECORD_HEADER_SIZE) {
-           return 0L;
-       }
-       mFileChannel.position(Integer.BYTES);
-       return mRandomAccessFile.readLong();
-   }
-
-    private long getLastSeqno() throws IOException {
-
-
-
-        if (mSize < TxLogger.RECORD_HEADER_SIZE) {
+    private long getFirstSeqno() throws IOException {
+        if (mSize < WriteBuffer.TXLOG_HEADER_SIZE) {
             return 0L;
         }
 
-       long tPos = alignToEndOfTxLog();
-        while (true) {
-            tPos -= (2 * Integer.BYTES);
-            mFileChannel.position(tPos); // backup before END SIGN and Size/
-            int tMsgSize = mRandomAccessFile.readInt();
-            tPos -= tMsgSize; // Backup pointer to begining of message
-            tPos -= Long.BYTES; // Backup pointer before messages sequence number
-            mFileChannel.position(tPos);
-            long tSeqNo = mRandomAccessFile.readLong();
-            if (tSeqNo > 0) {
-                return tSeqNo;
+        while( true ) {
+            if (mFileChannel.position() >= mFileChannel.size()) {
+                return -1L;
             }
-            tPos -= Integer.BYTES; // Backup over message length, just after previous log record.
-        }
-    }
-
-    private long alignToEndOfTxLog() throws IOException {
-        long tPos = mFileChannel.size();
-        tPos -= Integer.BYTES; // backup 4 bytes
-
-        while(tPos > 0) {
-            mFileChannel.position(tPos);
-            if (mRandomAccessFile.readInt() == TxLogger.MAGIC_END) {
-                return (tPos + Integer.BYTES);
+            mRandomAccessFile.readInt(); // Read begin marker
+            int tTypeAndSize = mRandomAccessFile.readInt();
+            int tSize = (tTypeAndSize & WriteBuffer.PAYLOAD_LENGTH_MASK);
+            int tType = (tTypeAndSize & WriteBuffer.REC_TYPE_MASK);
+            if (tType == WriteBuffer.FLAG_USER_PAYLOAD) {
+                return mRandomAccessFile.readLong();
             } else {
-                tPos -= 1; // Backup one byte
+                mFileChannel.position(mFileChannel.position() + tSize + WriteBuffer.TXLOG_POST_HEADER_SIZE);
             }
         }
-        return 0L;
     }
+
+    private long getLastSeqno() throws IOException {
+
+        if (mSize < WriteBuffer.TXLOG_HEADER_SIZE) {
+            return 0L;
+        }
+
+        long tPos = TxlogAux.alignToEndOfTxlogFile(mRandomAccessFile); // Positioned after last valid record in the txl
+        while (true) {
+            tPos -= (WriteBuffer.TXLOG_POST_HEADER_SIZE); // backup to the beginning of the post header
+            mFileChannel.position(tPos); // backup before END SIGN and Size/
+            int tUserDataMsgSize = (mRandomAccessFile.readInt() & WriteBuffer.PAYLOAD_LENGTH_MASK);
+            tPos -= tUserDataMsgSize + WriteBuffer.TXLOG_PRE_HEADER_SIZE; // Backup pointer to beginning of the record
+            mFileChannel.position(tPos); // Position the pointer to beginning of the record
+            int tMarker = mRandomAccessFile.readInt(); // Read begin marker
+            int tRecType = mRandomAccessFile.readInt() & WriteBuffer.REC_TYPE_MASK; // Read the record type
+            if (tRecType == WriteBuffer.FLAG_USER_PAYLOAD) {
+                return mRandomAccessFile.readLong(); // read message seqno
+            }
+        }
+    }
+
 
     public String getFullname() {
         return mFullname;
@@ -109,16 +103,17 @@ public class TxLogfile implements Comparator<TxLogfile>
 
     public String toString() {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yy-MM-dd HH:mm:ss");
-       return "file: " + mFullname + " size: " + mSize + " modified: " + simpleDateFormat.format(mLastmodified ) + " first: " + mFirstSequenceNumber + " last: " + mLastSequenceNumber;
+        return "file: " + mFullname + " size: " + mSize + " modified: " + simpleDateFormat.format(mLastmodified) + " first: " + mFirstSequenceNumber + " last: " + mLastSequenceNumber;
     }
 
+
     @Override
-    public int compare(TxLogfile f1, TxLogfile f2) {
-        if (f1.getFirstSequenceNumber() != f2.getFirstSequenceNumber()) {
-            return Long.compare(f1.getFirstSequenceNumber(), f2.getFirstSequenceNumber());
+    public int compareTo(TxLogfile f) {
+        if (this.getFirstSequenceNumber() != f.getFirstSequenceNumber()) {
+            return Long.compare(this.getFirstSequenceNumber(), f.getFirstSequenceNumber());
         }
-        if (f1.getLastSequenceNumber() != f2.getLastSequenceNumber()) {
-            return Long.compare(f1.getLastSequenceNumber(), f2.getLastSequenceNumber());
+        if (this.getLastSequenceNumber() != f.getLastSequenceNumber()) {
+            return Long.compare(this.getLastSequenceNumber(), f.getLastSequenceNumber());
         }
         return 0;
     }

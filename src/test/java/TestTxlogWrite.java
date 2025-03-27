@@ -41,13 +41,13 @@ public class TestTxlogWrite implements TxlogWriteCallback {
     {
         Random rnd = new Random();
         JsonObject tConfig = createConfiguration();
-        TxLogger txl = new TxLogger( tConfig );
-        System.out.println("Start writing, current seqno: " + txl.getServerMessageSeqno());
-        TxlogWriter txw = txl.getWriter();
+        TxlogWriter txw = TxLogger.getWriter( "./logs/", "txltest", tConfig);
+
+        System.out.println("Start writing, current seqno: " + txw.getMessageSeqno());
         startTime = System.currentTimeMillis();
         for( int i = 0; i < LOOP_COUNT; i++ ) {
             if (i == (LOOP_COUNT - 1)) {
-                txw.queueMessage(createMessage((i+1)), this, txl);
+                txw.queueMessage(createMessage((i+1)), this, txw);
             } else {
                 txw.queueMessage(createMessage((i+1)));
             }
@@ -64,8 +64,8 @@ public class TestTxlogWrite implements TxlogWriteCallback {
 
     @Override
     public void txlogWriteComplete(Object mCallbackParameter) {
-        TxLogger txl = (TxLogger) mCallbackParameter;
-        System.out.println("Exec time: " + (System.currentTimeMillis() - startTime) + " current seqno: " + txl.getServerMessageSeqno());
+        TxlogWriter txw = (TxlogWriter) mCallbackParameter;
+        System.out.println("Exec time: " + (System.currentTimeMillis() - startTime) + " current seqno: " + txw.getMessageSeqno());
         synchronized (this) {
             this.notifyAll();
         }
