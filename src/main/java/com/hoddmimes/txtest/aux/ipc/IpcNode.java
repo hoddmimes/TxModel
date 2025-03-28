@@ -25,7 +25,7 @@ public class IpcNode implements TcpThreadCallbackIf {
     private final int                   mTcpPort;           // Tcp/Ip port to connect to at remote host
     private ConnectThread               mConnectThread;     // Thread working for establishing a connection to remote host in case of being disconnected
     private Logger                      mLogger;            // IPC controller logger
-    private IPCFactory                  mIPCFactory;        // IPC message factory
+    private IPCFactory mIPCFactory;        // IPC message factory
     private IpcCallbacks                mCallbacks;         // parent callback interface
 
     private volatile long mLastHbTime;

@@ -12,11 +12,11 @@ public class TxlogEntry
         mMsgPayload = pPayload;
     }
 
-    public long getmMessageSeqno() {
+    public long getMessageSeqno() {
         return mMessageSeqno;
     }
 
-    public long getmTxid() {
+    public long getTxid() {
         return mTxid;
     }
 
@@ -27,9 +27,8 @@ public class TxlogEntry
     public TxlogEntry( byte[] pData) {
         mMessageSeqno = TxlogAux.bytesToLong(pData, 0);
         mTxid = TxlogAux.bytesToLong(pData, Long.BYTES);
-        byte[] tMsgPayload = new byte[ pData.length - (2 * Long.BYTES)];
-        System.arraycopy(pData, (2 * Long.BYTES), tMsgPayload, 0, pData.length - (2 * Long.BYTES));
-        mMsgPayload = tMsgPayload;
+        mMsgPayload = new byte[ pData.length - (2 * Long.BYTES)];
+        System.arraycopy(pData, (2 * Long.BYTES), mMsgPayload, 0, pData.length - (2 * Long.BYTES));
     }
 
     public byte[] toBytes() {

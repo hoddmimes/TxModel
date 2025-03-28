@@ -8,7 +8,7 @@ import com.hoddmimes.txtest.generated.fe.messages.RequestMessage;
 
 public class TxCntx
 {
-    private RequestMessage        mRequest;   // The FE request message
+    private RequestMessage mRequest;   // The FE request message
     public AuxTimestamp           mTimestamps;    // A class for collecting and printing timestamps of the transaction execution
     private long                  mMessageSeqno; // Global service / server
     private boolean               mReplicated; // Flag set to true when the standby have confirmed the replication

@@ -21,7 +21,6 @@ public class TestTxlogWrite implements TxlogWriteCallback {
     private JsonObject createConfiguration() {
         JsonObject jConfig = new JsonObject();
         jConfig.addProperty("max_file_size", 2 * 1000 * 1000);
-        jConfig.addProperty("log_files", "./logs/txlog_#sequence#.log");
         jConfig.addProperty("write_align_size", 512);
         jConfig.addProperty("write_buffer_size", 8192*3);
 
@@ -34,6 +33,7 @@ public class TestTxlogWrite implements TxlogWriteCallback {
         long tDelta = (lastNanoTime == 0) ? 0 : (tNow - lastNanoTime);
         lastNanoTime = tNow;
         String str = "{\"seqno\" : " + String.valueOf( pSeqNo ) + ", \"time\" : " + tDelta + "}";
+
         return str.getBytes(StandardCharsets.UTF_8);
     }
 

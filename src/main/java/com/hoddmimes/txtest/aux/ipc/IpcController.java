@@ -20,7 +20,7 @@ public class IpcController extends Thread implements IpcCallbacks
     private Logger mLogger = LogManager.getLogger( IpcController.class );
     private List<IpcNode>       mConnections;
     private IpcEndpoint         mEndPoint;
-    private IPCFactory          mIPCFactory;
+    private IPCFactory mIPCFactory;
 
 
 

@@ -1,11 +1,17 @@
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.txtest.aux.txlogger.*;
+import org.HdrHistogram.Histogram;
 
+import java.text.SimpleDateFormat;
 import java.util.List;
 
 public class TestTxlogReply {
+    enum RecType {User,Stastics};
 
+    RecType mRecType = RecType.User;
+
+    Histogram mHist = new Histogram(1000000000, 2);
     long startTime;
     String mLogDir = "./logs/";
     String mServicename = "txltest";
@@ -24,6 +30,11 @@ public class TestTxlogReply {
            if( args[i].equals( "-logdir" ) ) {
                mLogDir = args[++i];
            }
+           if( args[i].equals( "-rectype" ) ) {
+               if (args[++i].compareToIgnoreCase("Statistics") == 0) {
+                   mRecType = RecType.Stastics;
+               }
+           }
            if( args[i].equals( "-service" ) ) {
                mServicename = args[++i];
            }
@@ -33,6 +44,7 @@ public class TestTxlogReply {
 
     private void test()
     {
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         long seqno = 0;
         long logMsgSeqno = 0;
         TxlogReplayer.Direction tDirection = TxlogReplayer.Direction.Forward;
@@ -52,34 +64,51 @@ public class TestTxlogReply {
         int maxDelta = 0;
         int record_count = 0;
 
+        int tRecType = (mRecType == RecType.User) ? WriteBuffer.FLAG_USER_PAYLOAD : WriteBuffer.FLAG_WRITE_STATISTICS_PAYLOAD;
 
+        while( tReplayer.hasMore( tRecType ) ) {
+            TxlogReplyEntryInterface tRec = tReplayer.next(tRecType);
 
-        while( tReplayer.hasMore() ) {
-            TxlogReplyEntryMessage tRec = tReplayer.next();
+            if (tRec instanceof TxlogReplyEntryMessage) {
+                TxlogReplyEntryMessage tMsg = (TxlogReplyEntryMessage) tRec;
 
-            logMsgSeqno = tRec.getMessageSeqno();
-            record_count++;
-            String jStr = new String( tRec.getMessageData());
-            JsonObject jMsg = JsonParser.parseString(jStr).getAsJsonObject();
-            int s = jMsg.get("seqno").getAsInt();
-            int d = jMsg.get("time").getAsInt();
-            if (d > maxDelta) {
-                maxDelta = d;
-                System.out.println("new max delta: " + d + " seqno: " + (s+1));
-            }
-            if (seqno == 0) {
-                seqno = tRec.getMessageSeqno();
-            } else if (tDirection == TxlogReplayer.Direction.Backward) {
-                if ((--seqno)  != tRec.getMessageSeqno()) {
-                    System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tRec.getmFilename());
+                logMsgSeqno = tMsg.getMessageSeqno();
+                record_count++;
+                String jStr = new String(tMsg.getMsgPayload());
+                JsonObject jMsg = JsonParser.parseString(jStr).getAsJsonObject();
+                int s = jMsg.get("seqno").getAsInt();
+                int d = jMsg.get("time").getAsInt();
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    System.out.println("new max delta: " + d + " seqno: " + (s + 1));
                 }
-              } else {
-                    if ((++seqno) != tRec.getMessageSeqno()) {
-                        System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tRec.getmFilename());
+                if (seqno == 0) {
+                    seqno = tMsg.getMessageSeqno();
+                } else if (tDirection == TxlogReplayer.Direction.Backward) {
+                    if ((--seqno) != tMsg.getMessageSeqno()) {
+                        System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tMsg.getFilename());
+                    }
+                } else {
+                    if ((++seqno) != tMsg.getMessageSeqno()) {
+                        System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tMsg.getFilename());
                     }
                 }
+            } else if (tRec instanceof TxlogReplyEntryStatistics)  {
+                TxlogReplyEntryStatistics tStatMsg = (TxlogReplyEntryStatistics) tRec;
+                if (tStatMsg.getPreviousWriteTimeUsec() > 0) {
+                    mHist.recordValue(tStatMsg.getPreviousWriteTimeUsec());
+                }
+                //System.out.println("Msgs: " + tStatMsg.getMsgsInBuffer() + " size: " + tStatMsg.getMsgsPayloadSize() + "   prev-write-time: " + tStatMsg.getPreviousWriteTimeUsec() + "  log-time: " + sdf.format( tStatMsg.getLogTime()));
+            }
         }
-        System.out.println("All done, number of records: " + record_count + " last message seqno: " + logMsgSeqno);
+        if (mRecType == RecType.User) {
+            System.out.println("All done, number of records: " + record_count + " last message seqno: " + logMsgSeqno);
+        } else {
+            System.out.println("\n\nStatistic records: " + mHist.getTotalCount() + " mean: " + mHist.getMean() +
+                    " max: " + mHist.getMaxValue() + " min: " + mHist.getMinValue() +
+                    " 96%: " + mHist.getValueAtPercentile(96) +
+                    " 99%: " + mHist.getValueAtPercentile(99) );
+        }
     }
 
 

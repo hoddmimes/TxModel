@@ -84,12 +84,12 @@ public class TestTxlogRebuild {
             }
 
 
-            UpdateMessage updmsg1 = new UpdateMessage(r1.getMessageData());
-            UpdateMessage updmsg2 = new UpdateMessage(r2.getMessageData());
+            UpdateMessage updmsg1 = new UpdateMessage(r1.getMsgPayload());
+            UpdateMessage updmsg2 = new UpdateMessage(r2.getMsgPayload());
 
             if (updmsg1.getValue() != updmsg2.getValue()) {
                 System.out.println("Mismatch 01-seqnumber: " + r1.getMessageSeqno() + " 02-seqnumber: " + r2.getMessageSeqno() + "\n" +
-                        r1.getmFilename() + "   " + r2.getmFilename());
+                        r1.getFilename() + "   " + r2.getFilename());
             }
 
         }
@@ -113,7 +113,7 @@ public class TestTxlogRebuild {
             while( txlogReplayer.hasMore()) {
                 TxlogReplyEntryMessage tlrm = txlogReplayer.next();
                 if (tlrm != null) {
-                    UpdateMessage updmsg = new UpdateMessage(tlrm.getMessageData());
+                    UpdateMessage updmsg = new UpdateMessage(tlrm.getMsgPayload());
                     assetController.update(updmsg);
                 }
             }

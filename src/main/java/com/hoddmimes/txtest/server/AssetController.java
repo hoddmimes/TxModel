@@ -52,7 +52,7 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
         this.start();
     }
 
-    private UpdateResponse createUpdateResponse( int pAssetId, int pRqstId, boolean pStatusOk, String pStatusText) {
+    private UpdateResponse createUpdateResponse(int pAssetId, int pRqstId, boolean pStatusOk, String pStatusText) {
         UpdateResponse rsp = new UpdateResponse();
         rsp.setStatusText(pStatusText);
         rsp.setRequestId( pRqstId );

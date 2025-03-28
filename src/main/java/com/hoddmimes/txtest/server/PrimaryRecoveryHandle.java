@@ -64,7 +64,7 @@ public class PrimaryRecoveryHandle
                 tSeqno++;
             }
 
-            byte[] tData = txl.getMessageData();
+            byte[] tData = txl.getMsgPayload();
 
             tDataSize += tData.length + 14;
             RecoveryData tRecoveryData = new RecoveryData();

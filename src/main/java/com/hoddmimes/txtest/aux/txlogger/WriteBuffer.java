@@ -69,9 +69,9 @@ public class WriteBuffer
     protected static final int MAX_ALIGN_SIZE = 8192;
 
 
-    protected static final int FLAG_USER_PAYLOAD               = 0x80000000;
+    public static final int FLAG_USER_PAYLOAD               = 0x80000000;
     protected static final int FLAG_PADDING_PAYLOAD            = 0x40000000;
-    protected static final int FLAG_WRITE_STATISTICS_PAYLOAD   = 0x20000000;
+    public static final int FLAG_WRITE_STATISTICS_PAYLOAD   = 0x20000000;
     protected static final int PAYLOAD_LENGTH_MASK             = 0x0fffffff;
     protected static final int REC_TYPE_MASK                   = 0xf0000000;
 
@@ -125,18 +125,19 @@ public class WriteBuffer
     }
 
     public void addData(byte[] pMessage, long pSequenceNo ) {
-        this.addData( pMessage,  pSequenceNo, null, null);
+        this.addData( pMessage,  pSequenceNo, 0L,  null, null);
     }
 
-    public void addData(byte[] pMessage, long pSequenceNo, TxlogWriteCallback pCallback, Object pCallbackParameter ) {
+    public void addData(byte[] pMessage, long pSequenceNo, long pTxid, TxlogWriteCallback pCallback, Object pCallbackParameter ) {
         this.mMsgsInBuffer++;
         this.mUserDataSize += pMessage.length;
 
         mBuffer.putInt( MAGIC_START_MARKER);
-        mBuffer.putInt( FLAG_USER_PAYLOAD + (pMessage.length + Long.BYTES));
+        mBuffer.putInt( FLAG_USER_PAYLOAD + (pMessage.length + Long.BYTES + Long.BYTES ));
         mBuffer.putLong( pSequenceNo );
+        mBuffer.putLong( pTxid );
         mBuffer.put( pMessage );
-        mBuffer.putInt( FLAG_USER_PAYLOAD + (pMessage.length + Long.BYTES));
+        mBuffer.putInt( FLAG_USER_PAYLOAD + (pMessage.length + Long.BYTES + Long.BYTES));
         mBuffer.putInt( MAGIC_END_MARKER);
         if (pCallback != null) {
             if (this.mCallbacks == null) {
@@ -157,18 +158,18 @@ public class WriteBuffer
         mBuffer.putInt( Integer.BYTES, TXLOG_STATISTICS_SIZE + FLAG_WRITE_STATISTICS_PAYLOAD);
 
 
-        mBuffer.putLong( TXLOG_POST_HEADER_SIZE + WRITE_STAT_OFFSET_LOG_TIME, System.currentTimeMillis());
-        mBuffer.putInt( TXLOG_POST_HEADER_SIZE + WRITE_STAT_OFFSET_MSGS_IN_BUFFER, this.mMsgsInBuffer );
-        mBuffer.putInt( TXLOG_POST_HEADER_SIZE + WRITE_STAT_OFFSET_USER_PAYLOAD_SIZE, this.mUserDataSize );
-        mBuffer.putInt( TXLOG_POST_HEADER_SIZE + WRITE_STAT_OFFSET_WRTTIME_USEC, pPreviousWriteTimeUsec);
+        mBuffer.putLong( TXLOG_PRE_HEADER_SIZE + WRITE_STAT_OFFSET_LOG_TIME, System.currentTimeMillis());
+        mBuffer.putInt( TXLOG_PRE_HEADER_SIZE + WRITE_STAT_OFFSET_MSGS_IN_BUFFER, this.mMsgsInBuffer );
+        mBuffer.putInt( TXLOG_PRE_HEADER_SIZE + WRITE_STAT_OFFSET_USER_PAYLOAD_SIZE, this.mUserDataSize );
+        mBuffer.putInt( TXLOG_PRE_HEADER_SIZE + WRITE_STAT_OFFSET_WRTTIME_USEC, pPreviousWriteTimeUsec);
 
-        mBuffer.putInt( TXLOG_POST_HEADER_SIZE + TXLOG_STATISTICS_SIZE, TXLOG_STATISTICS_SIZE + FLAG_WRITE_STATISTICS_PAYLOAD);
-        mBuffer.putInt(  TXLOG_POST_HEADER_SIZE + TXLOG_STATISTICS_SIZE + Integer.BYTES, MAGIC_END_MARKER);
+        mBuffer.putInt( TXLOG_PRE_HEADER_SIZE + TXLOG_STATISTICS_SIZE, TXLOG_STATISTICS_SIZE + FLAG_WRITE_STATISTICS_PAYLOAD);
+        mBuffer.putInt(  TXLOG_PRE_HEADER_SIZE + TXLOG_STATISTICS_SIZE + Integer.BYTES, MAGIC_END_MARKER);
     }
 
     public boolean willDataFitInBuffer(int pMsgSize )
     {
-        return  ((mBuffer.capacity() - (2 * TXLOG_HEADER_SIZE) - mBuffer.position() - pMsgSize - Long.BYTES  ) > 0);
+        return  ((mBuffer.capacity() - (2 * TXLOG_HEADER_SIZE) - mBuffer.position() - (2 * pMsgSize - Long.BYTES )) > 0);
     }
 
     public void executeCallbacks() {

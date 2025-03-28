@@ -46,12 +46,12 @@ public class TxlogWriter
     }
 
 
-    public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno ) {
-        return queueMessage(pMessage, pMessageSeqno, null, null);
+    public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno, long pTxid ) {
+        return queueMessage(pMessage, pMessageSeqno, pTxid, null, null);
     }
 
-    public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno, TxlogWriteCallback pCallback, Object pParameter ) {
-        MsgQueItem queitm = new MsgQueItem(pMessage, pCallback, pParameter,pMessageSeqno);
+    public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno, long pTxid, TxlogWriteCallback pCallback, Object pParameter ) {
+        MsgQueItem queitm = new MsgQueItem(pMessage, pMessageSeqno, pTxid, pCallback, pParameter);
         this.mQueue.add(queitm);
         return pMessageSeqno;
     }
@@ -63,7 +63,7 @@ public class TxlogWriter
 
     public synchronized long queueMessage( byte[] pMessage, TxlogWriteCallback pCallback, Object pParameter ) {
         long tSeqno = mTxlogFileMessageSeqno.incrementAndGet();
-        MsgQueItem queitm = new MsgQueItem(pMessage, pCallback, pParameter,tSeqno);
+        MsgQueItem queitm = new MsgQueItem(pMessage, tSeqno, 0, pCallback, pParameter);
         this.mQueue.add(queitm);
         return tSeqno;
     }
@@ -126,7 +126,7 @@ public class TxlogWriter
         private void msgToBuffer( MsgQueItem pMsgItm ) {
             if (wrtBuffer.willDataFitInBuffer(pMsgItm.mMsg.length)) {
                 // Message fits into the current buffer
-                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mTxid,  pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
@@ -138,14 +138,14 @@ public class TxlogWriter
 
             // Will the message now fit into the (empty) write buffer  ?
             if (wrtBuffer.willDataFitInBuffer(pMsgItm.mMsg.length)) {
-                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                wrtBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mTxid, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 return;
             }
 
             // The message is larger than the default write buffer. A temporary larger buffer
             // is allocated to fit the message
             WriteBuffer tmpBuffer = new WriteBuffer(pMsgItm.totalMsgSize(), mConfiguration.getWriteBufferAlignSize(), true);
-                tmpBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mCallback,pMsgItm.mCallbackParameter);
+                tmpBuffer.addData(pMsgItm.mMsg, pMsgItm.mMessageSeqno, pMsgItm.mTxid,pMsgItm.mCallback,pMsgItm.mCallbackParameter);
                 writeBufferToFile( tmpBuffer );
                 tmpBuffer = null;
             }
@@ -176,10 +176,10 @@ public class TxlogWriter
                 }
 
                 pBuffer.setWriteStatistics( mLastWriteTimeUsec );
-                long tStartTime = System.currentTimeMillis();
+                long tStartTime = System.nanoTime();
                 mFileChannel.write(pBuffer.getBuffer());
                 mFileChannel.force(true);
-                mLastWriteTimeUsec = (int) ((System.currentTimeMillis() - tStartTime) / 1000L);
+                mLastWriteTimeUsec = (int) ((System.nanoTime() - tStartTime) / 1000L);
 
 
                 pBuffer.executeCallbacks();
@@ -196,16 +196,17 @@ public class TxlogWriter
 
     static class MsgQueItem
     {
-        MsgQueItem( byte[] pMessage, TxlogWriteCallback pCallback, Object pParameter, long pMessageSeqno ) {
+        MsgQueItem( byte[] pMessage,  long pMessageSeqno, long pTxid,  TxlogWriteCallback pCallback, Object pParameter) {
             mQueTime = (System.nanoTime() / 1000L);
             mMsg = pMessage;
             mCallback = pCallback;
             mCallbackParameter = pParameter;
             mMessageSeqno = pMessageSeqno;
+            mTxid = pTxid;
         }
 
         int totalMsgSize() {
-            return WriteBuffer.TXLOG_HEADER_SIZE + mMsg.length + Long.BYTES;
+            return WriteBuffer.TXLOG_HEADER_SIZE + mMsg.length + Long.BYTES + Long.BYTES;
         }
 
         byte[]              mMsg;
@@ -213,6 +214,7 @@ public class TxlogWriter
         Object              mCallbackParameter;
         long                mQueTime;
         long                mMessageSeqno;
+        long               mTxid;
     }
 
 }

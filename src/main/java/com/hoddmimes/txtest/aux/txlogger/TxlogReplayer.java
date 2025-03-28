@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TxlogReplayer {
-    public static enum Direction {Forward, Backward};
+    public static enum Direction {Forward, Backward}
+
+    ;
 
     final private Direction mDirection;
     final private String mLogDir;
@@ -17,7 +19,7 @@ public class TxlogReplayer {
     private int mCurrentFileIndex;
     private FileReplayHandler mReplayer;
     private long mFromMessageSeqno;
-    private TxlogReplyEntryMessage mNextReplayEntry;          // Next replay record
+    private TxlogReplyEntryInterface mNextReplayEntry;          // Next replay record
 
     public TxlogReplayer(String pLogDir, String pServiceName, Direction pDirection) {
         this(pLogDir, pServiceName, pDirection, 0L);
@@ -64,27 +66,35 @@ public class TxlogReplayer {
     }
 
     public boolean hasMore() {
+        return hasMore(WriteBuffer.FLAG_USER_PAYLOAD);
+   }
+
+
+    public boolean hasMore( int pRecordType ) {
         if (mNextReplayEntry == null) {
-            mNextReplayEntry = next();
+            mNextReplayEntry = next( pRecordType);
         }
         return (mNextReplayEntry != null);
     }
 
+    public TxlogReplyEntryMessage next( ) {
+        return (TxlogReplyEntryMessage) this.next( WriteBuffer.FLAG_USER_PAYLOAD)  ;
+    }
 
-    public TxlogReplyEntryMessage next() {
+    public TxlogReplyEntryInterface next( int pRecordType ) {
 
         if (mNextReplayEntry == null) {
-            mNextReplayEntry = (mReplayer == null) ? null : this.nextMessage();
+            mNextReplayEntry = (mReplayer == null) ? null : this.nextMessage( pRecordType );
         }
-        TxlogReplyEntryMessage re = mNextReplayEntry;
+        TxlogReplyEntryInterface re = mNextReplayEntry;
         mNextReplayEntry = null;
         return re;
     }
 
 
-    TxlogReplyEntryMessage nextMessage() {
+    TxlogReplyEntryInterface nextMessage( int pRecordType) {
         try {
-            TxlogReplyEntryMessage tReplayEntry = mReplayer.nextMessage();
+            TxlogReplyEntryInterface tReplayEntry = mReplayer.nextMessage( pRecordType );
             if (tReplayEntry == null) {
                 if (mDirection == Direction.Forward) {
                     mCurrentFileIndex++;
@@ -101,7 +111,7 @@ public class TxlogReplayer {
                     mReplayer.close();
                     mReplayer = new FileReplayHandler(mLogFilenames.get(this.mCurrentFileIndex), this.mDirection, this.mFromMessageSeqno);
                 }
-                tReplayEntry = mReplayer.nextMessage();
+                tReplayEntry = mReplayer.nextMessage( pRecordType );
             }
             return tReplayEntry;
         } catch (IOException e) {
@@ -153,7 +163,7 @@ public class TxlogReplayer {
             mFile.close();
         }
 
-        TxlogReplyEntryMessage nextMessage() {
+        TxlogReplyEntryInterface nextMessage( int pRecordType) {
             try {
                 TxlogReplyEntryInterface tReplayEntry;
                 do {
@@ -170,8 +180,8 @@ public class TxlogReplayer {
                          tReplayEntry = nextMessageFromFile();
                          mCurrtPos += tTotalRecordSize;
                     }
-                } while( tReplayEntry.getType() != WriteBuffer.FLAG_USER_PAYLOAD);
-                return (TxlogReplyEntryMessage) tReplayEntry;
+                } while( tReplayEntry.getType() != pRecordType);
+                return  tReplayEntry;
             }
             catch( IOException e) {
                 throw new RuntimeException(e);
@@ -229,10 +239,9 @@ public class TxlogReplayer {
                     mFileChannel.position(mFileChannel.position() + tSize);
                     tReplyEntry = new TxlogReplyEntryFiller(tSize);
                 } else if (tType == WriteBuffer.FLAG_USER_PAYLOAD) {
-                    long tMsgSeqno  = mFile.readLong();
-                    byte[] tPayload = new byte[tSize - Long.BYTES];
+                    byte[] tPayload = new byte[tSize];
                     mFile.readFully(tPayload);
-                    tReplyEntry = new TxlogReplyEntryMessage(tPayload, tMsgSeqno, this.mFilename);
+                    tReplyEntry = new TxlogReplyEntryMessage(tPayload, this.mFilename);
                 } else {
                     byte[] tPayload = new byte[tSize];
                     mFile.readFully(tPayload);

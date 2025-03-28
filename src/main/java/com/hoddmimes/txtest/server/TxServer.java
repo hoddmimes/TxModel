@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.hoddmimes.msgcompiler.messaging.MessageInterface;
 import com.hoddmimes.txtest.aux.AuxTimestamp;
 import com.hoddmimes.txtest.aux.TxCntx;
+import com.hoddmimes.txtest.aux.Txid;
 import com.hoddmimes.txtest.aux.fe.FEController;
 import com.hoddmimes.txtest.aux.ipc.IpcCallbacks;
 import com.hoddmimes.txtest.aux.ipc.IpcCntx;
@@ -235,7 +236,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
             TxlogReplyEntryMessage tMsgRec = tReplayer.next();
             tLastKnownSeqno = tMsgRec.getMessageSeqno();
             tRecordsReplayed++;
-            MessageInterface tMsg = tMsgFactory.createMessage(tMsgRec.getMessageData());
+            MessageInterface tMsg = tMsgFactory.createMessage(tMsgRec.getMsgPayload());
             TxCntx txCntx = new TxCntx(tMsg);
             processClientMessage( txCntx );
         }
@@ -309,7 +310,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
                     pTxCntx.addTimestamp("queue message to tx logger");
                     if (!pTxCntx.isPrimaryTx()) {
                         tMessageSeqno = pTxCntx.getMessageSequenceNumber(); // If being in stdby mode use the message sequence number from primary
-                        mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno); // queue the message to the tx logger
+                        mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno, Txid.next()); // queue the message to the tx logger
                     } else {
                         tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes()); // get an incremented message sequence number when being in primary mode
                         pTxCntx.setMessageSequenceNumber(tMessageSeqno);
