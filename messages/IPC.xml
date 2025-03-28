@@ -38,6 +38,7 @@
 
     <Message name="ToStandby">
         <Attribute name="sequenceNumber" type="long"/>
+        <Attribute name="txid" type="long"/>
         <Attribute name="message" type="MessageInterface"/>
     </Message>
 
@@ -54,6 +55,7 @@
     <Message name="RecoveryData">
         <Attribute name="data" type="byte[]"/>
         <Attribute name="msgSeqno" type="long"/>
+        <Attribute name="txid" type="long"/>
     </Message>
 
     <Message name="StandbyRecoveryResponse">

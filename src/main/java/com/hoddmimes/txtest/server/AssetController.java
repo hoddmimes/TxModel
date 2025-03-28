@@ -152,6 +152,7 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
         ToStandby toStandbyMsg = new ToStandby();
         toStandbyMsg.setSequenceNumber(pTxCntx.getMessageSequenceNumber());
         toStandbyMsg.setMessage(pTxCntx.getRequestMessage());
+        toStandbyMsg.setTxid( pTxCntx.getTxid());
         mWaitingTxCntx.add(pTxCntx);
         ipcController.send(qsController.getStandByNodeId(), toStandbyMsg);
         pTxCntx.addTimestamp("Message to standby queued");

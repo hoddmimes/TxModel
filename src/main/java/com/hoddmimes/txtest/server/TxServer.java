@@ -133,7 +133,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
             // Apply buffered live transactions
             for (ToStandby tsb : mStandbyRecoveryCntx.getBufferedMessages()) {
                 if (tsb.getSequenceNumber() > mStandbyRecoveryCntx.getCurrentSeqno()) {
-                    queueInboundClientMessage(new TxCntx(tsb.getMessage(), tsb.getSequenceNumber()));
+                    queueInboundClientMessage(new TxCntx(tsb.getMessage(), tsb.getSequenceNumber(), tsb.getTxid()));
                 }
             }
             mServerState.set(ServerState.Synchronized);
@@ -170,7 +170,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
         if  (pPrimResponse.getMessageData() != null) {
             for (RecoveryData tData : pPrimResponse.getMessageData()) {
                 MessageInterface tMsg = tFactory.createMessage(tData.getData());
-                queueInboundClientMessage(new TxCntx(tMsg, tData.getMsgSeqno()));
+                queueInboundClientMessage(new TxCntx(tMsg, tData.getMsgSeqno(), tData.getTxid()));
                 mStandbyRecoveryCntx.setCurrentSeqno(tData.getMsgSeqno());
                 mStandbyRecoveryCntx.incrementMessagesReceived();
             }
@@ -310,9 +310,9 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
                     pTxCntx.addTimestamp("queue message to tx logger");
                     if (!pTxCntx.isPrimaryTx()) {
                         tMessageSeqno = pTxCntx.getMessageSequenceNumber(); // If being in stdby mode use the message sequence number from primary
-                        mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno, Txid.next()); // queue the message to the tx logger
+                        mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno, pTxCntx.getTxid()); // queue the message to the tx logger
                     } else {
-                        tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes()); // get an incremented message sequence number when being in primary mode
+                        tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes(), pTxCntx.getTxid()); // get an incremented message sequence number when being in primary mode
                         pTxCntx.setMessageSequenceNumber(tMessageSeqno);
                     }
 
@@ -394,7 +394,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
             mLogger.error("Failed to send stdby reply to primary, reason: " + e.getMessage());
         }
 
-        TxCntx txCntx = new TxCntx(toStandby.getMessage(), toStandby.getSequenceNumber());
+        TxCntx txCntx = new TxCntx(toStandby.getMessage(), toStandby.getSequenceNumber(), toStandby.getTxid());
         queueInboundClientMessage(txCntx);
     }
 

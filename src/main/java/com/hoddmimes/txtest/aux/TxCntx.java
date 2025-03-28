@@ -17,6 +17,7 @@ public class TxCntx
     private int                  mAssetId;
     private FESendIf             mSendInterface;
     private TcpThread            mTcpThread;
+    private long                    mTxid;
 
     // Constructor when being primary and transaction is created by a message from a FE client
     public TxCntx( FESendIf pSendInterface, TcpThread pThread, MessageInterface pRequest) {
@@ -24,6 +25,7 @@ public class TxCntx
         mRequest = (RequestMessage) pRequest;
         mSendInterface = pSendInterface;
         mMessageSeqno = 0L;
+        mTxid = 0L;
         mReplicated = false;
         mPrimaryTx = true;
         mReplay = false;
@@ -59,11 +61,12 @@ public class TxCntx
     }
 
     // Constructor when the transaction is executing in the context of a standby
-    public TxCntx( MessageInterface pMessage, long pSeqno) {
+    public TxCntx( MessageInterface pMessage, long pSeqno, long pTxid) {
         mTcpThread = null;
         mRequest = (RequestMessage) pMessage;
         mSendInterface = null;
         mMessageSeqno = pSeqno;
+        mTxid = pTxid;
         mReplicated = false;
         mReplay = false;
         mPrimaryTx = false;
@@ -89,6 +92,14 @@ public class TxCntx
 
     public void setRequest(RequestMessage mRequest) {
         this.mRequest = mRequest;
+    }
+
+    public void setTxid( long pTxid ) {
+        this.mTxid = pTxid;
+    }
+
+    public long getTxid() {
+        return mTxid;
     }
 
     public void sendResponse(MessageInterface pResponse) {

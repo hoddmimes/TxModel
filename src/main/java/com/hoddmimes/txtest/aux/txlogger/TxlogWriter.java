@@ -45,12 +45,18 @@ public class TxlogWriter
        return mTxlogFileMessageSeqno.get();
     }
 
+    public synchronized long queueMessage( byte[] pMessage,  long pTxid ) {
+        return queueMessage(pMessage, 0L, pTxid, null, null);
+    }
 
     public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno, long pTxid ) {
         return queueMessage(pMessage, pMessageSeqno, pTxid, null, null);
     }
 
     public synchronized long queueMessage( byte[] pMessage, long pMessageSeqno, long pTxid, TxlogWriteCallback pCallback, Object pParameter ) {
+        if (pMessageSeqno <= 0) {
+            pMessageSeqno = this.getMessageSeqno();
+        }
         MsgQueItem queitm = new MsgQueItem(pMessage, pMessageSeqno, pTxid, pCallback, pParameter);
         this.mQueue.add(queitm);
         return pMessageSeqno;

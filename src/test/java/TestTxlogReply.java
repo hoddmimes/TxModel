@@ -61,7 +61,6 @@ public class TestTxlogReply {
 
         TxlogReplayer tReplayer = TxLogger.getReplayer(mLogDir, mServicename, TxlogReplayer.Direction.Forward, 0 );
         startTime = System.currentTimeMillis();
-        int maxDelta = 0;
         int record_count = 0;
 
         int tRecType = (mRecType == RecType.User) ? WriteBuffer.FLAG_USER_PAYLOAD : WriteBuffer.FLAG_WRITE_STATISTICS_PAYLOAD;
@@ -74,23 +73,16 @@ public class TestTxlogReply {
 
                 logMsgSeqno = tMsg.getMessageSeqno();
                 record_count++;
-                String jStr = new String(tMsg.getMsgPayload());
-                JsonObject jMsg = JsonParser.parseString(jStr).getAsJsonObject();
-                int s = jMsg.get("seqno").getAsInt();
-                int d = jMsg.get("time").getAsInt();
-                if (d > maxDelta) {
-                    maxDelta = d;
-                    System.out.println("new max delta: " + d + " seqno: " + (s + 1));
-                }
+
                 if (seqno == 0) {
                     seqno = tMsg.getMessageSeqno();
                 } else if (tDirection == TxlogReplayer.Direction.Backward) {
                     if ((--seqno) != tMsg.getMessageSeqno()) {
-                        System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tMsg.getFilename());
+                        System.out.println("Invalid sequence expected: " + seqno + " file: " + tMsg.getFilename());
                     }
                 } else {
                     if ((++seqno) != tMsg.getMessageSeqno()) {
-                        System.out.println("Invalid sequence expected: " + seqno + " got " + s + " file: " + tMsg.getFilename());
+                        System.out.println("Invalid sequence expected: " + seqno  + " file: " + tMsg.getFilename());
                     }
                 }
             } else if (tRec instanceof TxlogReplyEntryStatistics)  {

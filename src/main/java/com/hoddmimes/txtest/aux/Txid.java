@@ -10,8 +10,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 public class Txid {
-    static long mNetwrk = (findNetworkAddress() << 48);
-    static long mTime = ((System.currentTimeMillis() / 1000L) & 0xffff) << 32;
+    static long mNetwrk = (findNetworkAddress() << 56);              // 1 byte
+    static long mTime = ((System.currentTimeMillis() / 1000L) & 0xffffffff) << 24; //  4bytes
     static AtomicLong mCounter = new AtomicLong(0);
 
 
@@ -29,8 +29,8 @@ public class Txid {
     public static  long next() {
         if (mCounter.get() >= 0xfffffff) {
             synchronized (Txid.class) {
-                if (mCounter.get() >= 0xfffffff) {
-                    mTime = ((System.currentTimeMillis() / 1000L) & 0xffff) << 32;
+                if (mCounter.get() >= 0xffffff) {
+                    mTime = ((System.currentTimeMillis() / 1000L) & 0xffffffff) << 24;
                     mCounter.set(0);
                 }
             }

@@ -70,6 +70,7 @@ public class PrimaryRecoveryHandle
             RecoveryData tRecoveryData = new RecoveryData();
             tRecoveryData.setData( tData );
             tRecoveryData.setMsgSeqno( txl.getMessageSeqno());
+            tRecoveryData.setTxid(txl.getTxid());
             tResponseToStandby.addMessageDataToArray(tRecoveryData);
             if (tDataSize >= MAX_RESPONSE_SIZE) {
                 break;

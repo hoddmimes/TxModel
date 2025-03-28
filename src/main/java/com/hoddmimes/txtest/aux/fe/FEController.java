@@ -3,6 +3,7 @@ package com.hoddmimes.txtest.aux.fe;
 
 import com.hoddmimes.msgcompiler.messaging.MessageInterface;
 import com.hoddmimes.txtest.aux.TxCntx;
+import com.hoddmimes.txtest.aux.Txid;
 import com.hoddmimes.txtest.aux.net.TcpServer;
 import com.hoddmimes.txtest.aux.net.TcpServerCallbackIf;
 import com.hoddmimes.txtest.aux.net.TcpThread;
@@ -70,9 +71,11 @@ public class FEController implements FESendIf, TcpServerCallbackIf, TcpThreadCal
     {
 
         TxCntx txCntx = new TxCntx( this, pThread);
+        txCntx.addTimestamp("added request message");
         MessageInterface mRqstMsg = mMsgFactory.createMessage( pBuffer );
         txCntx.setRequest( (RequestMessage) mRqstMsg );
-        txCntx.addTimestamp("added request message");
+        txCntx.setTxid(Txid.next());
+
         mCallbackIf.queueInboundClientMessage( txCntx );
     }
 
