@@ -6,8 +6,10 @@ import com.hoddmimes.txtest.aux.net.TcpThread;
 import com.hoddmimes.txtest.generated.fe.messages.FEFactory;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateResponse;
+import org.HdrHistogram.Histogram;
 
 import java.io.IOException;
+import java.text.NumberFormat;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,6 +19,7 @@ public class TxClient
     private int mAssetCount = 100;
     private String mHost = "127.0.0.1";
     private int mPort = 4001;
+    private Histogram mResponseTimeHistogram = new Histogram(10000000000L, 3);
 
     private AtomicInteger mTxMsgsSent = new AtomicInteger(0);
     private int mTxToSend = 25000;
@@ -55,8 +58,17 @@ public class TxClient
             }
             catch (InterruptedException e) {}
         }
+        NumberFormat nbf = NumberFormat.getInstance();
+        nbf.setMaximumFractionDigits(1);
+
         tTxAVgTime = (mTotTxTime.get() / 1000L) / mTotTxCount.get();
         System.out.println("All done, tx_count: " + mTotTxCount.get() + " avg tx end-to-end time: " + tTxAVgTime + " usec.");
+        System.out.println("Tx count: " + mResponseTimeHistogram.getTotalCount() + " tx-mean: " + nbf.format(mResponseTimeHistogram.getMean()) +
+                "  tx-50: " + mResponseTimeHistogram.getValueAtPercentile(50) +
+                "  tx-90: " + mResponseTimeHistogram.getValueAtPercentile(90) +
+                "  tx-99: " + mResponseTimeHistogram.getValueAtPercentile(99) +
+                "  tx-min: " + mResponseTimeHistogram.getMinValue() +
+                "  tx-max: " + mResponseTimeHistogram.getMaxValue());
     }
 
 
@@ -177,8 +189,12 @@ public class TxClient
                         tTxStartTime = System.nanoTime();
                         byte[] tRspBuffer = mClient.transceive(upd.messageToBytes());
                         UpdateResponse tResponse = (UpdateResponse) mFactory.createMessage(tRspBuffer);
-                        mTotTxTime.addAndGet((System.nanoTime() - tTxStartTime));
+                        long tTxTime = System.nanoTime() - tTxStartTime;
+                        mTotTxTime.addAndGet(tTxTime);
                         mTotTxCount.incrementAndGet();
+                        synchronized ( TxClient.class) {
+                            mResponseTimeHistogram.recordValue((tTxTime / 1000L));
+                        }
                         if (!tResponse.getStatusOk()) {
                             System.out.println("ERROR msg: " + mThreadMsgsSent + " asset: " + upd.getAssetId() + " response: " + tResponse.getStatusText());
                         }

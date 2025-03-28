@@ -23,7 +23,7 @@
         }
       },
 
-      "quorum_server" : {  "mode" : "FAILOVER", "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "voting_process_timeout_sec" : 120 },
+      "quorum_server" : {  "mode" : "IGNORE", "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "voting_process_timeout_sec" : 120 },
 
       "ipc_connections" : {
         "hb_intervals_sec" : 1,
