@@ -115,12 +115,13 @@ public class QuorumServer implements IpcCallbacks
         tNode.statusHeartbeat( pMessage );
     }
 
-    synchronized private QuorumVoteResponse returnVoteResponse(int pNodeId, ServerRole pRole, String pReason, int pPrimaryNodeId)  {
+    synchronized private QuorumVoteResponse returnVoteResponse(int pNodeId, ServerRole pRole, String pReason, int pPrimaryNodeId, int pStandbyNodeId)  {
         QuorumVoteResponse tResponse = new QuorumVoteResponse();
         tResponse.setNodeId(pNodeId);
         tResponse.setRole(pRole.getValue());
         tResponse.setReason(pReason);
         tResponse.setPrimaryNodeId( pPrimaryNodeId );
+        tResponse.setStandbyNodeId( pStandbyNodeId );
         return tResponse;
     }
 
@@ -166,7 +167,7 @@ public class QuorumServer implements IpcCallbacks
                  mLogger.trace("VOTE: primary/standy failover !!!" + pMessage.toString());
                  mLogger.trace("VOTE: SET STATE node " + quorumNode );
                  mLogger.trace("VOTE: SET STATE node " + primaryNode );
-                 return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State changed stdby/primary failover", quorumNode.getNodeId());
+                 return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State changed stdby/primary failover", quorumNode.getNodeId(), primaryNode.getNodeId());
              }
          }
 
@@ -175,8 +176,11 @@ public class QuorumServer implements IpcCallbacks
          quorumNode = mService.getNode(pMessage.getNodeId());
          if (quorumNode.isIsConnected() && quorumNode.getRole() != ServerRole.UNKNOWN) {
              QuorumNode tPrimeryQuorumNode = mService.getPrimary();
-             mLogger.trace("VOTE: primary/standy can be decided based upon quorum server knowing the states \n" + pMessage.toString());
-             return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State set from previous session by \"findNodeState\" ", tPrimeryQuorumNode.getNodeId());
+             QuorumNode tStandbyQuorumNode = mService.getStandby();
+             mLogger.trace("VOTE: primary/standy can be decided based upon quorum server knowing the states \n" + pMessage.toString() + "\n" +
+                "( primary: " + tPrimeryQuorumNode + " standby: " + tStandbyQuorumNode + " )");
+             return returnVoteResponse( pMessage.getNodeId(), quorumNode.getRole(), "VOTE: State set from previous session by \"findNodeState\" ",
+                     tPrimeryQuorumNode.getNodeId(), tStandbyQuorumNode.getNodeId());
          }
 
         // Check if we are still in the scout out phase, if so ignore the vote request
@@ -191,7 +195,7 @@ public class QuorumServer implements IpcCallbacks
         if (mService.addVoteRequestAndCheckIfExpired( pMessage )) {
             // we will likely not be able to determine primary/standby roles since
             // all service nodes are not present withing the voting interval
-            mLogger.trace("VOTE: Vote period has now expired, will not be able to determine primary/standby roles, ignoring vote request \n" + pMessage.toString());
+            mLogger.info("VOTE: Vote period has now expired, will not be able to determine primary/standby roles, ignoring vote request \n" + pMessage.toString());
             return null;
         }
 
@@ -200,7 +204,9 @@ public class QuorumServer implements IpcCallbacks
             mLogger.trace("VOTE: Can now determine primary/standby roles having sufficient vote requests\n" + pMessage.toString());
             QuorumNode tNode = mService.getNode(pMessage.getNodeId());
             QuorumNode tPrimaryNode = mService.getPrimary();
-            return returnVoteResponse(pMessage.getNodeId(), tNode.getRole(), "VOTE: State set after completed voting process", tPrimaryNode.getNodeId());
+            QuorumNode tStandbyNode = mService.getStandby();
+            return returnVoteResponse(pMessage.getNodeId(), tNode.getRole(), "VOTE: State set after completed voting process",
+                    tPrimaryNode.getNodeId(), tStandbyNode.getNodeId());
         }
 
          mLogger.trace("VOTE: Can not determine primary/standby roles, still waiting for servers to connect and send vote requests\n" + pMessage.toString());

@@ -28,9 +28,10 @@ public class Asset
         return mUpdateCount;
     }
 
-    public void update( int pUpdateValue ) {
+    public int update( int pUpdateValue ) {
         mValue += pUpdateValue;
         mUpdateCount++;
+        return mValue;
     }
 
     public byte[] encode() {

@@ -1,5 +1,3 @@
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.hoddmimes.txtest.aux.txlogger.*;
 import org.HdrHistogram.Histogram;
 
@@ -8,6 +6,8 @@ import java.util.List;
 
 public class TestTxlogReply {
     enum RecType {User,Stastics};
+
+
 
     RecType mRecType = RecType.User;
 
@@ -30,8 +30,8 @@ public class TestTxlogReply {
            if( args[i].equals( "-logdir" ) ) {
                mLogDir = args[++i];
            }
-           if( args[i].equals( "-rectype" ) ) {
-               if (args[++i].compareToIgnoreCase("Statistics") == 0) {
+           if( args[i].equals( "-x" ) ) {
+               if (args[++i].compareToIgnoreCase("statistics") == 0) {
                    mRecType = RecType.Stastics;
                }
            }

@@ -43,7 +43,9 @@ task buildTxTestJar (type: Jar ) {
 
     from('build/classes/java/main') {
         include '**/*.class'
-
+    }
+    from('build/classes/java/test') {
+        include '**/*.class'
     }
     duplicatesStrategy = 'exclude'
 

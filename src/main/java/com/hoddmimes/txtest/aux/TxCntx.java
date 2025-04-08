@@ -106,6 +106,9 @@ public class TxCntx
         mSendInterface.sendResponseToClient( mTcpThread, pResponse );
     }
 
+    public void setReplicated( boolean pValue ) {
+        mReplicated = pValue;
+    }
 
     public void addTimestamp( String pMark )
     {

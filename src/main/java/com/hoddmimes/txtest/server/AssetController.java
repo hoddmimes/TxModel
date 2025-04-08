@@ -3,9 +3,8 @@ package com.hoddmimes.txtest.server;
 import com.google.gson.JsonObject;
 import com.hoddmimes.txtest.aux.TxCntx;
 import com.hoddmimes.txtest.aux.ipc.IpcController;
-import com.hoddmimes.txtest.aux.txlogger.TxLogger;
-import com.hoddmimes.txtest.aux.txlogger.TxlogWriter;
 import com.hoddmimes.txtest.generated.fe.messages.RequestMessage;
+import com.hoddmimes.txtest.generated.fe.messages.UpdateError;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
 import com.hoddmimes.txtest.generated.fe.messages.UpdateResponse;
 import com.hoddmimes.txtest.generated.ipc.messages.FromStandby;
@@ -14,7 +13,10 @@ import com.hoddmimes.txtest.quorum.QuorumStateController;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.concurrent.LinkedBlockingQueue;
 
 
@@ -22,27 +24,27 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
 {
     private HashMap<Integer,Asset> mAssetMap;
     private Logger mLogger = LogManager.getLogger( AssetController.class);
-    private TxLogger txLogger;
-    private TxlogWriter txWriter;
+    private TxServerIf mTxServerIf;
+
     private QuorumStateController qsController;
     private IpcController ipcController;
     private WaitingTxCntx mWaitingTxCntx;
-
+    private boolean mWaitForStandbyResponse = true;
     private LinkedBlockingQueue<TxCntx> mStdbySendQueue;
     private int mExecChannels;
     public AssetController(TxServerIf pTxServerIf) {
+        mTxServerIf = pTxServerIf;
         qsController = pTxServerIf.getQSController();
         ipcController = pTxServerIf.getIpcController();
-        mWaitingTxCntx = new WaitingTxCntx();
+        mWaitForStandbyResponse = pTxServerIf.getConfiguration().get( "wait_for_standby" ).getAsBoolean();
+        mWaitingTxCntx = new WaitingTxCntx(mWaitForStandbyResponse);
         mExecChannels = pTxServerIf.getConfiguration().get( "executor_threads" ).getAsInt();
         mStdbySendQueue = new LinkedBlockingQueue<>();
 
         int tNumberOfAssets = pTxServerIf.getConfiguration().get("number_of_assets").getAsInt();
 
         JsonObject jTxLoggerConfig = pTxServerIf.getConfiguration().get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
-        txWriter = TxLogger.getWriter( "./" + String.format("%02d",pTxServerIf.getNodeId()) + "/",
-                                     pTxServerIf.getServiceName(),
-                                     jTxLoggerConfig);
+
 
         mAssetMap = new HashMap<>();
         for (int i = 0; i < tNumberOfAssets; i++) {
@@ -52,8 +54,8 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
         this.start();
     }
 
-    private UpdateResponse createUpdateResponse(int pAssetId, int pRqstId, boolean pStatusOk, String pStatusText) {
-        UpdateResponse rsp = new UpdateResponse();
+    private UpdateError createUpdateResponse(int pAssetId, int pRqstId, boolean pStatusOk, String pStatusText) {
+        UpdateError rsp = new UpdateError();
         rsp.setStatusText(pStatusText);
         rsp.setRequestId( pRqstId );
         rsp.setStatusOk( pStatusOk );
@@ -62,7 +64,7 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
 
     @Override
     public long getServerMessageSeqno() {
-        return txWriter.getMessageSeqno();
+        return mTxServerIf.getMessageSequenceNumberIf().getServerMessageSeqno();
     }
 
     /**
@@ -110,11 +112,11 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
 
             // Apply business logic
             pTxCntx.addTimestamp("Update business logic");
-            tAsset.update(updMsg.getValue());
+            int tCurrentAssetValue = tAsset.update(updMsg.getValue());
             pTxCntx.addTimestamp("Business logic updated");
 
             // if the transaction is executing in the context of a primary wait for the confirmation from the standby
-            if ((!pTxCntx.isReplay()) && qsController.isFailoverMode() && (qsController.isPrimary())) {
+            if ((!pTxCntx.isReplay()) && qsController.isFailoverMode() && (qsController.isPrimary() && (mWaitForStandbyResponse))) {
                 pTxCntx.addTimestamp("Start waiting for standby reply");
                 synchronized (pTxCntx) {
                     if (!pTxCntx.isReplicated()) {
@@ -133,7 +135,12 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
             if (pTxCntx.isPrimaryTx()) {
                 pTxCntx.addTimestamp("start to send response");
                 // Send response to the client only if in primary mode
-                pTxCntx.sendResponse(createUpdateResponse(tAssetId, tRqstMsg.getRequestId(), true, "Asset id (" + tAssetId + ") updated to: " + tAsset.getValue()));
+                UpdateResponse tUpdRsp = new UpdateResponse();
+                tUpdRsp.setTxid( pTxCntx.getTxid());
+                tUpdRsp.setRequestId(tRqstMsg.getRequestId());
+                tUpdRsp.setStatusOk(true);
+                tUpdRsp.setCurrentValue( tCurrentAssetValue);
+                pTxCntx.sendResponse( tUpdRsp );
                 pTxCntx.addTimestamp("response sent");
             } else {
                 pTxCntx.addTimestamp("stdby business logic completed");
@@ -154,43 +161,63 @@ public class AssetController extends Thread implements ServerMessageSeqnoInterfa
         toStandbyMsg.setMessage(pTxCntx.getRequestMessage());
         toStandbyMsg.setTxid( pTxCntx.getTxid());
         mWaitingTxCntx.add(pTxCntx);
-        ipcController.send(qsController.getStandByNodeId(), toStandbyMsg);
+        if (!ipcController.send(qsController.getStandByNodeId(), toStandbyMsg)) {
+            // Message was not sent to standby, due to not being present or failing
+            // Set replication status to true so we avoid waiting for the standby confirmation
+            pTxCntx.setReplicated( true );
+        }
         pTxCntx.addTimestamp("Message to standby queued");
-
     }
 
 
 
     public void fromStandby(FromStandby pMessage) {
-        TxCntx tTxCntx = mWaitingTxCntx.getAndRemove(pMessage.getSequenceNumber());
-        if ((tTxCntx != null) && (tTxCntx.getMessageSequenceNumber() == pMessage.getSequenceNumber())) {
-            tTxCntx.setReplicatedToStandby();
-            if (mLogger.isTraceEnabled()) {
-                mLogger.trace("TX " + tTxCntx.getMessageSequenceNumber() + " is now replicated to STANDBY");
+        if (mWaitForStandbyResponse) {
+            TxCntx tTxCntx = mWaitingTxCntx.getAndRemove(pMessage.getSequenceNumber());
+            if ((tTxCntx != null) && (tTxCntx.getMessageSequenceNumber() == pMessage.getSequenceNumber())) {
+                tTxCntx.setReplicatedToStandby();
+                if (mLogger.isTraceEnabled()) {
+                    mLogger.trace("TX " + tTxCntx.getMessageSequenceNumber() + " is now replicated to STANDBY");
+                }
+            } else {
+                mLogger.error("No outstanding transaction or no matching message sequence number");
             }
         } else {
-            mLogger.error("No outstanding transaction or no matching message sequence number");
+            //if ((pMessage.getSequenceNumber() % 2000) == 0) {
+            //    mLogger.info("primary seqno: " + getServerMessageSeqno() + " standby seqno: " + pMessage.getSequenceNumber() +
+            //            "   diff: " + (getServerMessageSeqno() - pMessage.getSequenceNumber()));
+            //}
         }
     }
 
 
     class WaitingTxCntx {
         volatile List<TxCntx> mWaitingTxCntxs;
+        boolean mWaitForStandbyResponse;
 
-        public WaitingTxCntx() {
+        public WaitingTxCntx( boolean pWaitForStandbyResponse) {
             mWaitingTxCntxs = new ArrayList<>();
+            mWaitForStandbyResponse = pWaitForStandbyResponse;
         }
 
         public synchronized void add(TxCntx pTxCntx) {
-            mWaitingTxCntxs.add(pTxCntx);
+            if (mWaitForStandbyResponse) {
+                mWaitingTxCntxs.add(pTxCntx);
+            }
         }
 
         public synchronized void remove(TxCntx pTxCntx) {
-            mWaitingTxCntxs.remove(pTxCntx);
+            if (mWaitForStandbyResponse) {
+                mWaitingTxCntxs.remove(pTxCntx);
+            }
         }
 
         public synchronized TxCntx getAndRemove( long pMessageSequenceNumber )
         {
+            if (!mWaitForStandbyResponse) {
+                return null;
+            }
+
             ListIterator<TxCntx> tItr = mWaitingTxCntxs.listIterator();
             while( tItr.hasNext() ) {
                 TxCntx txCntx = tItr.next();

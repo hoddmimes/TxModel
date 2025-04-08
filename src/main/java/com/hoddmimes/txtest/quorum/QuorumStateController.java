@@ -128,7 +128,7 @@ public class QuorumStateController implements IpcCallbacks
         if (tMessage.getMessageId() == QuorumVoteResponse.MESSAGE_ID) {
             QuorumVoteResponse tVoteRsp = (QuorumVoteResponse) tMessage;
             mLogger.info( "Received vote response, state: " + ServerRole.valueOf(tVoteRsp.getRole()) +
-                    " (my-node-id: " + mMyQuorumNode.getNodeId() + " primary-node-id: " + tVoteRsp.getPrimaryNodeId() + ")");
+                    " (my-node-id: " + mMyQuorumNode.getNodeId() + " primary-node-id: " + tVoteRsp.getPrimaryNodeId() + " standby-node-id: " + tVoteRsp.getStandbyNodeId() + " )");
 
             mMyQuorumNode.setState(ServerRole.valueOf(tVoteRsp.getRole()));
             for( QuorumNode node : mQuorumNodes.values()) {
@@ -136,6 +136,10 @@ public class QuorumStateController implements IpcCallbacks
                    if (node.getRole() != ServerRole.PRIMARY) {
                      node.setState(ServerRole.PRIMARY);
                    }
+                } else if (node.getNodeId() == tVoteRsp.getStandbyNodeId()) {
+                    if (node.getRole() != ServerRole.STANDBY) {
+                        node.setState(ServerRole.STANDBY);
+                    }
                 }
             }
         }

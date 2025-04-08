@@ -6,7 +6,6 @@ import com.google.gson.JsonParser;
 import com.hoddmimes.msgcompiler.messaging.MessageInterface;
 import com.hoddmimes.txtest.aux.AuxTimestamp;
 import com.hoddmimes.txtest.aux.TxCntx;
-import com.hoddmimes.txtest.aux.Txid;
 import com.hoddmimes.txtest.aux.fe.FEController;
 import com.hoddmimes.txtest.aux.ipc.IpcCallbacks;
 import com.hoddmimes.txtest.aux.ipc.IpcCntx;
@@ -78,12 +77,16 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
 
         // Enable or disable transaction timestamp tracing
        if (!jConfiguration.get("timestamps").getAsBoolean()) {
+           mLogger.info("Timestamping is disabled");
            AuxTimestamp.disable();
+       } else {
+           mLogger.info("Timestamping is enabled");
+           AuxTimestamp.enable();
        }
 
         mServiceName = jConfiguration.get("service").getAsJsonObject().get("name").getAsString();
         JsonObject jTxLoggerConfig = jConfiguration.get("service").getAsJsonObject().get("tx_logging").getAsJsonObject();
-        mTxlogWriter = TxLogger.getWriter( "./" + String.format("%02d",mNodeId) + "/", mServiceName, jTxLoggerConfig);
+        mTxlogWriter = TxLogger.getWriter( "./", mServiceName, jTxLoggerConfig);
 
         mTxPrintCount = jConfiguration.get("tx_stat_print_interval_tx_count").getAsLong();
         mServiceName = jConfiguration.get("service").getAsJsonObject().get("name").getAsString();
@@ -231,7 +234,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
 
         FEFactory tMsgFactory = new FEFactory();
 
-        TxlogReplayer tReplayer = TxLogger.getReplayer( "./" + String.format("%02d", this.mNodeId) + "/", mServiceName, TxlogReplayer.Direction.Forward);
+        TxlogReplayer tReplayer = TxLogger.getReplayer( "./" , mServiceName, TxlogReplayer.Direction.Forward);
         while( tReplayer.hasMore() ) {
             TxlogReplyEntryMessage tMsgRec = tReplayer.next();
             tLastKnownSeqno = tMsgRec.getMessageSeqno();
@@ -240,7 +243,7 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
             TxCntx txCntx = new TxCntx(tMsg);
             processClientMessage( txCntx );
         }
-        mLogger.info("Replayed TX log files, records replayed: " + tRecordsReplayed + " time: " + (System.currentTimeMillis() - tStartTime) + " ms.");
+        mLogger.info("Replayed TX log files, records replayed: " + tRecordsReplayed + " last known seqnumber : " + tLastKnownSeqno + " replay exec time: " + (System.currentTimeMillis() - tStartTime) + " ms.");
         return tLastKnownSeqno;
     }
 
@@ -312,7 +315,12 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
                         tMessageSeqno = pTxCntx.getMessageSequenceNumber(); // If being in stdby mode use the message sequence number from primary
                         mTxlogWriter.queueMessage(updmsg.messageToBytes(), tMessageSeqno, pTxCntx.getTxid()); // queue the message to the tx logger
                     } else {
-                        tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes(), pTxCntx.getTxid()); // get an incremented message sequence number when being in primary mode
+                        if ((!mQSController.isFailoverMode()) && ((mTxlogWriter.getMessageSeqno() % 5000) == 0)) {
+                            TxLoggerMonitorEvent tEvent = new TxLoggerMonitorEvent(mTxlogWriter.getQueueSize());
+                            tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes(), 0L, pTxCntx.getTxid(), tEvent, tEvent);
+                        } else {
+                            tMessageSeqno = mTxlogWriter.queueMessage(updmsg.messageToBytes(), pTxCntx.getTxid()); // get an incremented message sequence number when being in primary mode
+                        }
                         pTxCntx.setMessageSequenceNumber(tMessageSeqno);
                     }
 
@@ -321,19 +329,21 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
                         pTxCntx.addTimestamp("queue message to stdby");
                         mAssetController.publishMessageToStandby(pTxCntx);
                     }
-                }
             }
+        }
     }
 
     public void queueInboundClientMessage(TxCntx pTxCntx) {
             // entry point for business transactions transaction
             // we want tx messages to be replicated to the standby in same order as tx messages are queues to txlogger
             // that should give the tx order in the primary/standy to be the
+            long st = System.nanoTime();
             synchronized( mBusinessMutext ) {
                 txloggingAndReplication( pTxCntx );
                 mTxExecutor.queueRequest(pTxCntx);
             }
-            pTxCntx.addTimestamp("queued TxCntx for business processing");
+            long txTime = (System.nanoTime() - st) / 1000L;
+            pTxCntx.addTimestamp("queued TxCntx for business processing (txloggingAndReplication : " + txTime + " )");
     }
 
     public void processClientMessage(TxCntx pTxCntx)
@@ -453,6 +463,22 @@ public class TxServer implements IpcCallbacks, FECallbackIf, ServerMessageSeqnoI
     }
 
 
+    class TxLoggerMonitorEvent implements TxlogWriteCallback {
+        int mQueueLengthAtStart;
+        long mTimeAtStart;
+
+        TxLoggerMonitorEvent( int pQueueLengthAtStart) {
+            mQueueLengthAtStart = pQueueLengthAtStart;
+            mTimeAtStart = System.nanoTime();
+        }
+
+
+        @Override
+        public void txlogWriteComplete(Object mCallbackParameter) {
+            TxLoggerMonitorEvent tEvent = (TxLoggerMonitorEvent) mCallbackParameter;
+            mLogger.info( "Queue length at start: " + tEvent.mQueueLengthAtStart + " txlog execute time: " + ((System.nanoTime() - tEvent.mTimeAtStart) / 1000L));
+        }
+    }
 
 
 }

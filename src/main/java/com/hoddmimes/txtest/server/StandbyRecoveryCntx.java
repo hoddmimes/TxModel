@@ -8,13 +8,14 @@ import java.util.List;
 public class StandbyRecoveryCntx
 {
     public enum ServerState { Recovery, Synchronizing,  };
-    private long    mLastKnownSeqnoAtStart;
+    private final long    mLastKnownSeqnoAtStart;
     private int     mRecoveryMsgsReceived;
     private long    mCurrentSeqno;
     private List<ToStandby> mBufferedMessages;
 
     StandbyRecoveryCntx( long pLastKnownSeqno ) {
         mLastKnownSeqnoAtStart = pLastKnownSeqno;
+        mCurrentSeqno = pLastKnownSeqno;
     }
 
     synchronized void addToStandbyMessage( ToStandby pMessagge) {
@@ -27,7 +28,7 @@ public class StandbyRecoveryCntx
 
     void reset() {
         mRecoveryMsgsReceived = 0;
-        mLastKnownSeqnoAtStart = this.mCurrentSeqno;
+        this.mCurrentSeqno = mLastKnownSeqnoAtStart;
         mBufferedMessages = new ArrayList<ToStandby>();
     }
 

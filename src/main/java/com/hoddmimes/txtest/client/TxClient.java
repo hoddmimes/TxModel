@@ -3,9 +3,7 @@ package com.hoddmimes.txtest.client;
 
 import com.hoddmimes.txtest.aux.net.TcpClient;
 import com.hoddmimes.txtest.aux.net.TcpThread;
-import com.hoddmimes.txtest.generated.fe.messages.FEFactory;
-import com.hoddmimes.txtest.generated.fe.messages.UpdateMessage;
-import com.hoddmimes.txtest.generated.fe.messages.UpdateResponse;
+import com.hoddmimes.txtest.generated.fe.messages.*;
 import org.HdrHistogram.Histogram;
 
 import java.io.IOException;
@@ -61,12 +59,17 @@ public class TxClient
         NumberFormat nbf = NumberFormat.getInstance();
         nbf.setMaximumFractionDigits(1);
 
+        long txTotTimeUsec = (System.nanoTime() - tTxStartTime) / 1000L;
+        long txPerSec = (mTotTxCount.get() * 1000L * 1000L) / txTotTimeUsec;
         tTxAVgTime = (mTotTxTime.get() / 1000L) / mTotTxCount.get();
-        System.out.println("All done, tx_count: " + mTotTxCount.get() + " avg tx end-to-end time: " + tTxAVgTime + " usec.");
+
+        System.out.println("Total exec time: " + txTotTimeUsec + " usec.");
         System.out.println("Tx count: " + mResponseTimeHistogram.getTotalCount() + " tx-mean: " + nbf.format(mResponseTimeHistogram.getMean()) +
+                " tx / sec : " + txPerSec +
                 "  tx-50: " + mResponseTimeHistogram.getValueAtPercentile(50) +
-                "  tx-90: " + mResponseTimeHistogram.getValueAtPercentile(90) +
-                "  tx-99: " + mResponseTimeHistogram.getValueAtPercentile(99) +
+                "  1 stddev (68.27): " + mResponseTimeHistogram.getValueAtPercentile(68.27) +
+                "  2 stddev (95.45): " + mResponseTimeHistogram.getValueAtPercentile(95.45) +
+                "  3 stddev (99.73): " + mResponseTimeHistogram.getValueAtPercentile(99.73) +
                 "  tx-min: " + mResponseTimeHistogram.getMinValue() +
                 "  tx-max: " + mResponseTimeHistogram.getMaxValue());
     }
@@ -188,15 +191,19 @@ public class TxClient
                     try {
                         tTxStartTime = System.nanoTime();
                         byte[] tRspBuffer = mClient.transceive(upd.messageToBytes());
-                        UpdateResponse tResponse = (UpdateResponse) mFactory.createMessage(tRspBuffer);
+                        ResponseMessage tResponse = (UpdateResponse) mFactory.createMessage(tRspBuffer);
                         long tTxTime = System.nanoTime() - tTxStartTime;
                         mTotTxTime.addAndGet(tTxTime);
                         mTotTxCount.incrementAndGet();
-                        synchronized ( TxClient.class) {
-                            mResponseTimeHistogram.recordValue((tTxTime / 1000L));
-                        }
+
                         if (!tResponse.getStatusOk()) {
-                            System.out.println("ERROR msg: " + mThreadMsgsSent + " asset: " + upd.getAssetId() + " response: " + tResponse.getStatusText());
+                            UpdateError tErrMsg = (UpdateError) tResponse;
+                            System.out.println("ERROR msg: " + mThreadMsgsSent + " request id: " + tErrMsg.getRequestId() + " response: " + tErrMsg.getStatusText());
+                        } else {
+                            synchronized ( TxClient.class) {
+                                mResponseTimeHistogram.recordValue((tTxTime / 1000L));
+                            }
+                            UpdateResponse tUpdRsp = (UpdateResponse) tResponse;
                         }
                     } catch (IOException e) {
                         throw new RuntimeException(e);

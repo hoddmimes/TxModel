@@ -23,6 +23,11 @@ public class QuorumService {
     public QuorumNode getPrimary() {
         return mNodes.stream().filter(n -> (n.getRole() == ServerRole.PRIMARY)).findFirst().orElse(null);
     }
+    public QuorumNode getStandby() {
+        return mNodes.stream().filter(n -> (n.getRole() == ServerRole.STANDBY)).findFirst().orElse(null);
+    }
+
+
 
     public boolean validateVoteRequests() {
         // In a failover situation the primary will not be connected and will not provide any vote requests

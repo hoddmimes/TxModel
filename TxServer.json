@@ -19,11 +19,11 @@
         "tx_logging": {
           "max_file_size": 10000000,
           "write_align_size": 512,
-          "write_buffer_size": 24576
+          "write_buffer_size": 32768
         }
       },
 
-      "quorum_server" : {  "mode" : "IGNORE", "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "voting_process_timeout_sec" : 120 },
+      "quorum_server" : {  "mode" : "FAILOVER", "node_id" : 3, "startup_scout_initial_delay_sec" : 20, "voting_process_timeout_sec" : 120 },
 
       "ipc_connections" : {
         "hb_intervals_sec" : 1,
@@ -31,6 +31,8 @@
         "disconnect_is_failure" : true
       },
 
+
+      "wait_for_standby" : true,
       "executor_threads" : 4,
       "timestamps" : false,
       "tx_stat_print_interval_tx_count" : 5000,

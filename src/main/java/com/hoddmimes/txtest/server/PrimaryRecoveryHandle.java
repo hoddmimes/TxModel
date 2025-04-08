@@ -26,7 +26,7 @@ public class PrimaryRecoveryHandle
         synchronized (this) {
             mId = IdIndex++;
             mServiceName = pTxServerIf.getServiceName();
-            mLogDir = "./" + String.format("%02d",pTxServerIf.getNodeId()) + "/";
+            mLogDir = "./";
 
         }
     }
@@ -80,7 +80,7 @@ public class PrimaryRecoveryHandle
 
         tResponseToStandby.setEndOfData( eod );
         int tSize = (tResponseToStandby.getMessageData() == null) ? 0 : tResponseToStandby.getMessageData().size();
-        mLogger.info("[replayFromPrimary] start from seqno: " + pFromStandbyRequest.getLastKnownMessageSeqno()   +
+        mLogger.trace("[replayFromPrimary] start from seqno: " + pFromStandbyRequest.getLastKnownMessageSeqno()   +
                 " to seqno: " + tSeqno  + " records in msg: " + tSize + " exec time: " + (System.currentTimeMillis() - tStartTime) + " ms.");
         return tResponseToStandby;
     }

@@ -27,6 +27,10 @@ public class AuxTimestamp
     public static void disable() {
         DISABLED = true;
     }
+    public static void enable() {
+        DISABLED = false;
+    }
+
     public static void setTraceStackLevel( int pLevel ) {
         STACK_LEVEL = pLevel;
     }

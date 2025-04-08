@@ -17,6 +17,7 @@
         <Attribute name="nodeId" type="int"/>
         <Attribute name="role" type="int"/>
         <Attribute name="primaryNodeId" type="int"/>
+        <Attribute name="standbyNodeId" type="int"/>
         <Attribute name="reason" type="String"/>
     </Message>
 
@@ -64,5 +65,10 @@
         <Attribute name="messageData" type="RecoveryData" array="[]"/>
     </Message>
 
+    <Message name="EchoMessage">
+        <Attribute name="time01" type="long"/>
+        <Attribute name="time02" type="long"/>
+        <Attribute name="time03" type="long"/>
+    </Message>
 
 </Messages>
