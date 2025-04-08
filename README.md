@@ -326,7 +326,9 @@ In a setup using **RAID 1** or similar mirrored disk configurations, a potential
 Even disk writes that go to disk-backed cache memory are **generally more expensive** than **zero-copy TCP/IP writes**, where data is offloaded directly through the NIC stack. As an alternative, the system could **stream transactions to a backup log server**, solely for durability purposes. This would reduce the risk window of data loss, as the data would be replicated to a secondary system before being acknowledged.
 
 
-when running a test in the distributed environment with the client and primary server on different hosts, the latency and throughput significantly improved
+when running a test in the distributed environment with the client and primary server on different hosts, the latency and throughput significantly improved.
+
+_However still suffering from a slow tcp/ip stack when client interacts with the server._
 
 **Client end-to-end** 
 `Tx count: 3000000 
@@ -337,7 +339,7 @@ when running a test in the distributed environment with the client and primary s
 	2 stddev (95.45): 384 usec  
 	3 stddev (99.73): 495 usec`
 
-  **Server end-to-end** 8 usec`
+  **Server end-to-end** 8 usec
 
 The same test with the client and server on the same machine i.e. short circuit the physical tcp/ip interaction.
 
