@@ -2,7 +2,7 @@
 
 ## About TxTest
 
-_TxTest_ is a hobby and  proof-of-concept distributed transaction system designed for _ultra-low latency and high throughput_, achieving transactional times in _microseconds_ rather than milliseconds. Built for mission-critical applications, it prioritizes _fault tolerance, scalability, and consistency_, ensuring high availability even under substantial loads.
+_TxModel_ is a hobby and  proof-of-concept distributed transaction system designed for _ultra-low latency and high throughput_, achieving transactional times in _microseconds_ rather than milliseconds. Built for mission-critical applications, it prioritizes _fault tolerance, scalability, and consistency_, ensuring high availability even under substantial loads.
 
 Such systems are commonly used in industries like _finance, telecommunications, and industrial automation_, where real-time processing and reliability are paramount.
 
